@@ -1,0 +1,12 @@
+build/
+*.nds
+*.elf
+*.map
+*.dump
+*.sav
+*.dsv
+compile_commands.json
+tests/*.bin
+tests/test_battle
+__pycache__/
+*.pyc
