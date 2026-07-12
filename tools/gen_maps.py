@@ -205,8 +205,9 @@ def room_recto_a():
     # foso de ácido
     g.row(21, 10, 15, 'A')
     g.rect(10, 22, 6, 2, 'a')
-    # membranas para cruzar el foso
-    g.row(17, 11, 13, '-')
+    # membranas-escalón para cruzar el foso (alcanzables de un salto)
+    g.row(18, 10, 11, '-')
+    g.row(16, 13, 14, '-')
     # repisa alta a la izquierda con la entrada (culo de Deedee)
     _floor(g, 8, 0, 4)
     g.set(1, 5, 'o')                 # esfínter de entrada (abierto)

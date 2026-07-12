@@ -1049,24 +1049,26 @@ def build():
     glyphs = [G[ch] for ch in CHARSET]
     n = len(glyphs)
 
-    # Tira: [variante oscura n glifos][variante clara n glifos]
-    sheet = Canvas(8 * n * 2, 8)
+    # Tira: [tile en blanco][oscura: tinta k sobre crema][clara: w+sombra]
+    # El tile 0 en blanco garantiza que "limpiar" sea transparente.
+    sheet = Canvas(8 * (n * 2 + 1), 8)
     for var in range(2):
         for gi, rows in enumerate(glyphs):
-            ox = (var * n + gi) * 8
+            ox = (1 + var * n + gi) * 8
+            if var == 0:
+                # fondo crema opaco (los textos oscuros van sobre cajas)
+                for y in range(8):
+                    for x in range(8):
+                        sheet.set(ox + x, y, '#')
             for y, row in enumerate(rows):
                 for x, ch in enumerate(row):
                     if ch != '#':
                         continue
-                    if var == 0:
-                        sheet.set(ox + x, y, 'k')
-                    else:
-                        # clara: blanco con sombra abajo-derecha
-                        sheet.set(ox + x, y, 'w')
+                    sheet.set(ox + x, y, 'k' if var == 0 else 'w')
         if var == 1:
             # sombras de la variante clara
             for gi, rows in enumerate(glyphs):
-                ox = (var * n + gi) * 8
+                ox = (1 + var * n + gi) * 8
                 for y, row in enumerate(rows):
                     for x, ch in enumerate(row):
                         if ch == '#':

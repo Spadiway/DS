@@ -149,7 +149,7 @@
 #define SPRF_TAPON_KO 5
 
 #define SPRS_FX 16
-#define SPRN_FX 54
+#define SPRN_FX 59
 #define SPRF_FX_STAR0 0
 #define SPRF_FX_STAR1 1
 #define SPRF_FX_HEART0 2
@@ -204,6 +204,11 @@
 #define SPRF_FX_CHAPA1 51
 #define SPRF_FX_CHAPA2 52
 #define SPRF_FX_CHAPA3 53
+#define SPRF_FX_CHEST0 54
+#define SPRF_FX_CHEST1 55
+#define SPRF_FX_PLATE0 56
+#define SPRF_FX_PLATE1 57
+#define SPRF_FX_BLOQUE 58
 
 #define SPRS_PORTRAITS 32
 #define SPRN_PORTRAITS 20

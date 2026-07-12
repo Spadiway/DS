@@ -204,6 +204,17 @@ def build_tiles_and_rooms(lines_meta):
     h = ['// Generado por tools/gen_all.py — NO editar a mano',
          '#ifndef ROOMS_DATA_H__', '#define ROOMS_DATA_H__', '',
          '#include <nds/ndstypes.h>', '',
+         '// tipos de entidad (coinciden con tools/gen_maps.py)',
+         'enum {',
+         '    E_NPC, E_ENEMY, E_SAVE, E_EXIT, E_TRIGGER, E_PLATE,',
+         '    E_GATE, E_CHEST, E_BLOCK, E_SWITCH, E_DOOR, E_VENT,',
+         '    E_BOSS, E_SHOP,',
+         '};', '',
+         '// NPCs',
+         'enum {',
+         '    NPC_BABA, NPC_RUFO, NPC_NUEZ, NPC_CROAC, NPC_ANCIANO,',
+         '    NPC_TENDERO,',
+         '};', '',
          'typedef struct {',
          '    u8 type;', '    u16 x, y;',
          '    u8 a, b, c, d;',
@@ -263,11 +274,34 @@ def build_tiles_and_rooms(lines_meta):
     print(f'tiles: jardin {len(packer_j.tiles)}, colon {len(packer_c.tiles)}')
 
 
+# nombres C para índices de paleta usados por el motor
+PAL_NAMES = [
+    ('k', 'OUTLINE'), ('K', 'SHADOW'), ('w', 'WHITE'), ('W', 'OFFWHITE'),
+    ('l', 'LGRAY'), ('g', 'MGRAY'), ('d', 'DGRAY'), ('#', 'CREAM'),
+    ('*', 'GOLD'), ('+', 'GOLDDARK'), ('-', 'UIBLUE'), ('_', 'UIDARK'),
+    ('~', 'HPGREEN'), ('^', 'RED'), (':', 'PEBLUE'), (';', 'ORANGE'),
+    ('!', 'ACID'), ('r', 'TONGUE'), ('R', 'TONGUEDARK'),
+]
+
+
+def write_palette_ids():
+    from pixelkit import IDX
+    lines = ['// Generado por tools/gen_all.py — NO editar a mano',
+             '#ifndef PALETTE_IDS_H__', '#define PALETTE_IDS_H__', '']
+    for ch, name in PAL_NAMES:
+        lines.append(f'#define COL_{name} {IDX[ch]}')
+    lines.append('')
+    lines.append('#endif')
+    with open(os.path.join(DATA, 'palette_ids.h'), 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+
+
 def main():
     for d in (BIN, GFX, AUDIO, DATA):
         os.makedirs(d, exist_ok=True)
 
     pack_palette()
+    write_palette_ids()
 
     # ---- fuente ----
     gen_font.build()   # escribe assets/gfx/font.png y font_map.h
@@ -309,16 +343,18 @@ def main():
             sheet.blit(f, i * size, 0)
         save_png(os.path.join(GFX, f'spr_{name}.png'), sheet)
 
-    # banners 64x16
+    # banners: la DS no tiene sprites de 64x16, así que van centrados
+    # en frames de 64x32
     bfr, bsize, border_ = ui['banners']
     out = bytearray()
     for f in bfr:
-        # sprite 64x16: tiles fila a fila (8 cols x 2 filas)
-        for ty in range(0, 16, 8):
+        pad = Canvas(64, 32)
+        pad.blit(f, 0, 8)
+        for ty in range(0, 32, 8):
             for tx in range(0, 64, 8):
                 for y in range(8):
                     for x in range(8):
-                        out.append(f.px[ty + y][tx + x])
+                        out.append(pad.px[ty + y][tx + x])
     with open(os.path.join(BIN, 'spr_banners.bin'), 'wb') as f:
         f.write(out)
     sheet_defines(meta, 'banners', border_, 64, len(bfr))

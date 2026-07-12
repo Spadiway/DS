@@ -108,41 +108,41 @@ def buzz_fly(dur=0.6):
 
 
 def build_all(outdir):
-    write_wav(os.path.join(outdir, 'sfx_salto.wav'),
+    write_wav(os.path.join(outdir, 'salto.wav'),
               square_sweep(0.14, 300, 900, vol=0.5, duty=0.4))
-    write_wav(os.path.join(outdir, 'sfx_golpe.wav'),
+    write_wav(os.path.join(outdir, 'golpe.wav'),
               noise_burst(0.15, vol=0.8, decay=0.03, lowpass=0.6) +
               square_sweep(0.08, 160, 60, vol=0.5))
-    write_wav(os.path.join(outdir, 'sfx_excelente.wav'),
+    write_wav(os.path.join(outdir, 'excelente.wav'),
               chime([523, 659, 784, 1047], 0.09, vol=0.5))
-    write_wav(os.path.join(outdir, 'sfx_bien.wav'),
+    write_wav(os.path.join(outdir, 'bien.wav'),
               chime([523, 784], 0.08, vol=0.45))
-    write_wav(os.path.join(outdir, 'sfx_lengua.wav'), slurp())
-    write_wav(os.path.join(outdir, 'sfx_menu.wav'),
+    write_wav(os.path.join(outdir, 'lengua.wav'), slurp())
+    write_wav(os.path.join(outdir, 'menu.wav'),
               square_sweep(0.05, 700, 900, vol=0.3))
-    write_wav(os.path.join(outdir, 'sfx_ok.wav'),
+    write_wav(os.path.join(outdir, 'ok.wav'),
               chime([660, 990], 0.06, vol=0.4))
-    write_wav(os.path.join(outdir, 'sfx_cancel.wav'),
+    write_wav(os.path.join(outdir, 'cancel.wav'),
               square_sweep(0.08, 500, 250, vol=0.35))
-    write_wav(os.path.join(outdir, 'sfx_dano.wav'),
+    write_wav(os.path.join(outdir, 'dano.wav'),
               noise_burst(0.12, vol=0.7, decay=0.025) +
               square_sweep(0.1, 220, 90, vol=0.45, duty=0.3))
-    write_wav(os.path.join(outdir, 'sfx_curar.wav'),
+    write_wav(os.path.join(outdir, 'curar.wav'),
               chime([784, 1047, 1319], 0.1, vol=0.45))
-    write_wav(os.path.join(outdir, 'sfx_chapa.wav'),
+    write_wav(os.path.join(outdir, 'chapa.wav'),
               chime([1319, 1760], 0.07, vol=0.4))
-    write_wav(os.path.join(outdir, 'sfx_guardar.wav'),
+    write_wav(os.path.join(outdir, 'guardar.wav'),
               chime([523, 659, 1047], 0.12, vol=0.45))
-    write_wav(os.path.join(outdir, 'sfx_esquiva.wav'),
+    write_wav(os.path.join(outdir, 'esquiva.wav'),
               noise_burst(0.16, vol=0.35, decay=0.06, lowpass=0.85))
-    write_wav(os.path.join(outdir, 'sfx_ko.wav'),
+    write_wav(os.path.join(outdir, 'ko.wav'),
               square_sweep(0.5, 400, 80, vol=0.5, duty=0.5))
-    write_wav(os.path.join(outdir, 'sfx_nivel.wav'),
+    write_wav(os.path.join(outdir, 'nivel.wav'),
               chime([523, 659, 784, 1047, 1319], 0.09, vol=0.5))
-    write_wav(os.path.join(outdir, 'sfx_zumbido.wav'), buzz_fly())
-    write_wav(os.path.join(outdir, 'sfx_gas.wav'),
+    write_wav(os.path.join(outdir, 'zumbido.wav'), buzz_fly())
+    write_wav(os.path.join(outdir, 'gas.wav'),
               noise_burst(0.3, vol=0.4, decay=0.12, lowpass=0.9))
-    write_wav(os.path.join(outdir, 'sfx_tragar.wav'),
+    write_wav(os.path.join(outdir, 'tragar.wav'),
               square_sweep(0.25, 400, 100, vol=0.4, duty=0.6) +
               noise_burst(0.1, vol=0.3, decay=0.05, lowpass=0.8))
     print('sfx: 18 efectos')

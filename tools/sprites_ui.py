@@ -279,6 +279,52 @@ def icon_collar():
     return c
 
 
+def chest(open_):
+    c = Canvas(16, 16)
+    c.rect(2, 7, 12, 7, '9')
+    c.hline(2, 13, 7, '8')
+    c.vline(2, 7, 13, '8')
+    c.vline(13, 7, 13, '0')
+    if open_:
+        c.rect(2, 2, 12, 3, '0')
+        c.hline(2, 13, 2, '9')
+        c.rect(6, 8, 4, 3, '*')     # brillo del botín
+        c.set(7, 7, 'w')
+    else:
+        for i in range(3):
+            c.hline(2 + i, 13 - i, 6 - i, '9' if i % 2 else '8')
+        c.rect(7, 8, 2, 3, '*')     # cerradura
+    c.outline('k')
+    return c
+
+
+def plate(pressed):
+    c = Canvas(16, 16)
+    if pressed:
+        c.rect(3, 10, 10, 3, 'Q')
+        c.hline(3, 12, 10, 'N')
+    else:
+        c.rect(3, 8, 10, 5, 'N')
+        c.hline(3, 12, 8, 'n')
+        c.hline(3, 12, 12, 'Q')
+    c.set(7, 9 + (2 if pressed else 0), '*')
+    c.set(8, 9 + (2 if pressed else 0), '*')
+    c.outline('k')
+    return c
+
+
+def bloque():
+    """Bola de comida compactada empujable (interior)."""
+    c = Canvas(16, 16)
+    c.ellipse_shaded(8, 8, 7, 7, '9', '8', '0')
+    c.hline(4, 11, 5, '0')
+    c.hline(3, 12, 9, '0')
+    c.set(5, 4, '5')
+    c.set(6, 4, '5')
+    c.outline('k')
+    return c
+
+
 def icon_chapa():
     """Chapa (moneda del juego), con giro de 4 frames."""
     frames = []
@@ -388,6 +434,11 @@ def build_all():
     add('icon_collar', icon_collar())
     for i, f in enumerate(icon_chapa()):
         add(f'chapa{i}', f)
+    add('chest0', chest(False))
+    add('chest1', chest(True))
+    add('plate0', plate(False))
+    add('plate1', plate(True))
+    add('bloque', bloque())
     out['fx16'] = (fr, 16, order)
 
     fr, order = [], []

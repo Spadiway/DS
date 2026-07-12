@@ -4,6 +4,19 @@
 
 #include <nds/ndstypes.h>
 
+// tipos de entidad (coinciden con tools/gen_maps.py)
+enum {
+    E_NPC, E_ENEMY, E_SAVE, E_EXIT, E_TRIGGER, E_PLATE,
+    E_GATE, E_CHEST, E_BLOCK, E_SWITCH, E_DOOR, E_VENT,
+    E_BOSS, E_SHOP,
+};
+
+// NPCs
+enum {
+    NPC_BABA, NPC_RUFO, NPC_NUEZ, NPC_CROAC, NPC_ANCIANO,
+    NPC_TENDERO,
+};
+
 typedef struct {
     u8 type;
     u16 x, y;
