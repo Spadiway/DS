@@ -183,9 +183,10 @@ static void preload_room_sheets(void)
         }
     }
     if (room_id == ROOM_CESPED) {
-        // solo idle/walk/lick de Deedee: los 6 primeros frames
+        // solo idle/walk/lick de Deedee: los 6 primeros frames.
+        // Terelu la precarga la cinemática de intro (CS_SPAWN) cuando
+        // hace falta; no aparece en el juego normal del césped.
         spr_preload_max(SH_DEEDEE, 6);
-        spr_preload(SH_TERELU);
     }
 }
 
