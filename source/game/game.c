@@ -265,6 +265,8 @@ static void title_enter(void)
     txt_fill_screen(map);
 }
 
+static void apply_requests(void);
+
 static void title_update(void)
 {
     title_t++;
@@ -297,6 +299,7 @@ static void title_update(void)
         fade_in(20);
         return;
     }
+#ifdef DEV_SHORTCUTS
     if (down & (KEY_SELECT | KEY_Y)) {
         // acceso rápido de desarrollo: empezar dentro de Deedee
         sfx(SND_OK);
@@ -306,6 +309,19 @@ static void title_update(void)
         fade_in(10);
         return;
     }
+    if (down & KEY_X) {
+        // acceso rápido de desarrollo: combate de prueba directo
+        sfx(SND_OK);
+        fade_out(10);
+        txt_fill_screen(map);
+        game_new_skip_intro();
+        static const u8 form[3] = { 2 /*bacteriolo*/, 3 /*gusanillo*/, 255 };
+        game_request_battle(form, false);
+        apply_requests();
+        fade_in(10);
+        return;
+    }
+#endif
 
     spr_begin();
     spr_draw(SH_FX, (title_t & 16) ? SPRF_FX_PAW0 : SPRF_FX_PAW1,
@@ -391,6 +407,16 @@ static void apply_requests(void)
 void game_init(void)
 {
     scripts_init();
+#ifdef DEBUG_BOOT_BATTLE
+    // ROM de depuración: arranca directo a un combate (captura sin input)
+    game_new_skip_intro();
+    {
+        static const u8 form[3] = { 2 /*bacteriolo*/, 3 /*gusanillo*/, 255 };
+        game_request_battle(form, false);
+        apply_requests();
+    }
+    return;
+#endif
     title_enter();
 }
 
