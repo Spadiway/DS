@@ -17,8 +17,10 @@ const SCREENS = ['screen-title', 'screen-menu', 'screen-slots', 'screen-map',
 class Game {
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.gfxHigh = localStorage.getItem('benitoGfx') !== 'low';
+    this.applyGfx();
     el('canvas-holder').appendChild(this.renderer.domElement);
 
     this.input = new Input();
@@ -49,6 +51,12 @@ class Game {
     this.showScreen('screen-title');
     window.__game = this; // debug/testing hook
     requestAnimationFrame((tm) => this.loop(tm));
+  }
+
+  applyGfx() {
+    this.renderer.shadowMap.enabled = this.gfxHigh;
+    this.renderer.setPixelRatio(this.gfxHigh ? Math.min(devicePixelRatio, 2) : 1);
+    this.renderer.setSize(innerWidth, innerHeight);
   }
 
   // ---------------- screens ----------------
@@ -89,6 +97,12 @@ class Game {
     mk(t('newGame'), () => this.gotoSlots());
     mk(t('langToggle'), () => { toggleLang(); this.gotoMenu(); });
     mk(Audio.musicOn ? t('musicOn') : t('musicOff'), () => { Audio.toggleMusic(); this.gotoMenu(); });
+    mk(this.gfxHigh ? t('gfxHigh') : t('gfxLow'), () => {
+      this.gfxHigh = !this.gfxHigh;
+      localStorage.setItem('benitoGfx', this.gfxHigh ? 'high' : 'low');
+      this.applyGfx();
+      this.gotoMenu();
+    });
     this.showScreen('screen-menu');
   }
 
@@ -142,60 +156,199 @@ class Game {
     this.showScreen('screen-slots');
   }
 
-  // ---------------- world map ----------------
+  // ---------------- world map (archipelago canvas + detail panel) ----------------
+  static MAP_ISLANDS = [
+    { x: 0.09, y: 0.68 }, { x: 0.22, y: 0.34 }, { x: 0.36, y: 0.66 },
+    { x: 0.50, y: 0.30 }, { x: 0.63, y: 0.64 }, { x: 0.76, y: 0.32 },
+    { x: 0.87, y: 0.62 }, { x: 0.94, y: 0.24 },
+  ];
+  static MAP_COLORS = ['#6fbc4c', '#2e7d4f', '#e8c97a', '#cfeaff', '#9aa7b8', '#8892a8', '#8a5fd4', '#c0392b'];
+  static MAP_ICONS = ['🦴', '🗿', '🏝️', '❄️', '🏯', '🌆', '🌀', '👑'];
+
   gotoMap() {
     this.disposeSession();
     this.state = 'map';
     Audio.startMusic('title');
     recountTotal(this.save);
     el('map-stats').textContent = t('totalCaught', { n: this.save.totalCaptured });
-
-    const list = el('world-list');
-    list.innerHTML = '';
-    for (const world of WORLDS) {
-      const card = document.createElement('div');
-      card.className = 'world-card' + (world.available ? '' : ' locked');
-      const title = document.createElement('div');
-      title.className = 'world-title';
-      const num = document.createElement('span');
-      num.className = 'wnum';
-      num.textContent = String(world.id);
-      title.appendChild(num);
-      title.appendChild(document.createTextNode(t(world.nameKey)));
-      card.appendChild(title);
-
-      const row = document.createElement('div');
-      row.className = 'level-row';
-      if (!world.available) {
-        const note = document.createElement('div');
-        note.className = 'lock-note';
-        note.textContent = `🔒 ${t('comingSoon')}`;
-        row.appendChild(note);
-      } else {
-        for (const lvlId of world.levels) {
-          const unlocked = !!this.save.unlocked[lvlId];
-          const done = !!this.save.completed[lvlId];
-          const caught = (this.save.captures[lvlId] ?? []).length;
-          const total = totalPetsInLevel(lvlId);
-          const btn = document.createElement('button');
-          btn.className = 'level-btn' + (done ? ' done' : '');
-          btn.disabled = !unlocked;
-          const name = document.createElement('span');
-          name.className = 'lv-name';
-          name.textContent = `${lvlId} · ${t('l' + lvlId)}`;
-          const meta = document.createElement('span');
-          meta.className = 'lv-meta';
-          meta.textContent = unlocked ? `🐾 ${caught}/${total}${done ? ' ✔' : ''}` : `🔒 ${t('completeToUnlock')}`;
-          btn.appendChild(name);
-          btn.appendChild(meta);
-          if (unlocked) btn.addEventListener('click', () => { Audio.sfx('select'); this.startLevel(lvlId); });
-          row.appendChild(btn);
-        }
-      }
-      card.appendChild(row);
-      list.appendChild(card);
-    }
+    if (!this.selectedWorld) this.selectedWorld = 1;
     this.showScreen('screen-map');
+    this.drawWorldMap();
+    this.renderWorldDetail();
+    if (!this._mapClickBound) {
+      this._mapClickBound = true;
+      el('map-canvas').addEventListener('click', (e) => this.onMapClick(e));
+    }
+  }
+
+  worldDone(world) {
+    return world.levels.length > 0 && world.levels.every((id) => this.save.completed[id]);
+  }
+
+  drawWorldMap() {
+    const cv = el('map-canvas');
+    const ctx = cv.getContext('2d');
+    const Wc = cv.width, Hc = cv.height;
+    // sea
+    const sea = ctx.createLinearGradient(0, 0, 0, Hc);
+    sea.addColorStop(0, '#2a6a9e');
+    sea.addColorStop(1, '#123a5e');
+    ctx.fillStyle = sea;
+    ctx.fillRect(0, 0, Wc, Hc);
+    // decorative waves
+    ctx.strokeStyle = 'rgba(255,255,255,.14)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 24; i++) {
+      const wx = (i * 137) % Wc, wy = (i * 83 + 40) % Hc;
+      ctx.beginPath();
+      ctx.arc(wx, wy, 9, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+    }
+    const P = Game.MAP_ISLANDS.map((p) => [p.x * Wc, p.y * Hc]);
+    // dotted route
+    ctx.setLineDash([7, 8]);
+    ctx.lineWidth = 3;
+    for (let i = 0; i < P.length - 1; i++) {
+      const done = this.worldDone(WORLDS[i]);
+      ctx.strokeStyle = done ? 'rgba(255,217,59,.9)' : 'rgba(255,255,255,.35)';
+      const [x1, y1] = P[i], [x2, y2] = P[i + 1];
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo((x1 + x2) / 2, (y1 + y2) / 2 - 26, x2, y2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // islands
+    for (let i = 0; i < P.length; i++) {
+      const world = WORLDS[i];
+      const [x, y] = P[i];
+      const R = 27;
+      const avail = world.available;
+      // sand base
+      ctx.fillStyle = avail ? '#f0dca8' : '#8a94a2';
+      ctx.beginPath();
+      ctx.ellipse(x, y + 5, R + 7, R * 0.62 + 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // island body
+      ctx.fillStyle = avail ? Game.MAP_COLORS[i] : '#6a7482';
+      ctx.beginPath();
+      ctx.arc(x, y - 4, R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      // selection ring
+      if (this.selectedWorld === world.id) {
+        ctx.strokeStyle = '#ffd93b';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(x, y - 4, R + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // icon + number
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '24px sans-serif';
+      ctx.fillText(avail ? Game.MAP_ICONS[i] : '🔒', x, y - 6);
+      ctx.font = 'bold 13px Trebuchet MS, sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = 'rgba(0,0,0,.6)';
+      ctx.lineWidth = 3;
+      const label = String(world.id);
+      ctx.strokeText(label, x - R + 6, y - R + 4);
+      ctx.fillText(label, x - R + 6, y - R + 4);
+      // completed badge
+      if (this.worldDone(world)) {
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillStyle = '#2ecc71';
+        ctx.strokeText('✔', x + R - 7, y - R + 5);
+        ctx.fillText('✔', x + R - 7, y - R + 5);
+      }
+      // name under available islands
+      ctx.font = 'bold 11.5px Trebuchet MS, sans-serif';
+      ctx.fillStyle = avail ? '#ffe9b8' : 'rgba(255,255,255,.45)';
+      ctx.strokeStyle = 'rgba(0,0,0,.55)';
+      ctx.lineWidth = 3;
+      const name = t(world.nameKey);
+      ctx.strokeText(name, x, y + R + 16);
+      ctx.fillText(name, x, y + R + 16);
+    }
+  }
+
+  onMapClick(e) {
+    const cv = el('map-canvas');
+    const rect = cv.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+    const my = (e.clientY - rect.top) * (cv.height / rect.height);
+    for (let i = 0; i < Game.MAP_ISLANDS.length; i++) {
+      const x = Game.MAP_ISLANDS[i].x * cv.width;
+      const y = Game.MAP_ISLANDS[i].y * cv.height;
+      if ((mx - x) ** 2 + (my - y) ** 2 < 36 * 36) {
+        this.selectedWorld = WORLDS[i].id;
+        Audio.sfx('select');
+        this.drawWorldMap();
+        this.renderWorldDetail();
+        return;
+      }
+    }
+  }
+
+  renderWorldDetail() {
+    const world = WORLDS.find((w) => w.id === this.selectedWorld) ?? WORLDS[0];
+    const box = el('world-detail');
+    box.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'world-card' + (world.available ? '' : ' locked');
+    const title = document.createElement('div');
+    title.className = 'world-title';
+    const num = document.createElement('span');
+    num.className = 'wnum';
+    num.textContent = String(world.id);
+    title.appendChild(num);
+    title.appendChild(document.createTextNode(t(world.nameKey)));
+    if (world.available) {
+      let caught = 0, total = 0;
+      for (const lvlId of world.levels) {
+        caught += (this.save.captures[lvlId] ?? []).length;
+        total += totalPetsInLevel(lvlId);
+      }
+      const prog = document.createElement('span');
+      prog.className = 'world-progress';
+      prog.textContent = `🐾 ${caught}/${total}`;
+      title.appendChild(prog);
+    }
+    card.appendChild(title);
+
+    const row = document.createElement('div');
+    row.className = 'level-row';
+    if (!world.available) {
+      const note = document.createElement('div');
+      note.className = 'lock-note';
+      note.textContent = `🔒 ${t('comingSoon')}`;
+      row.appendChild(note);
+    } else {
+      for (const lvlId of world.levels) {
+        const unlocked = !!this.save.unlocked[lvlId];
+        const done = !!this.save.completed[lvlId];
+        const caught = (this.save.captures[lvlId] ?? []).length;
+        const total = totalPetsInLevel(lvlId);
+        const btn = document.createElement('button');
+        btn.className = 'level-btn' + (done ? ' done' : '');
+        btn.disabled = !unlocked;
+        const name = document.createElement('span');
+        name.className = 'lv-name';
+        name.textContent = `${lvlId} · ${t('l' + lvlId)}`;
+        const meta = document.createElement('span');
+        meta.className = 'lv-meta';
+        meta.textContent = unlocked ? `🐾 ${caught}/${total}${done ? ' ✔' : ''}` : `🔒 ${t('completeToUnlock')}`;
+        btn.appendChild(name);
+        btn.appendChild(meta);
+        if (unlocked) btn.addEventListener('click', () => { Audio.sfx('select'); this.startLevel(lvlId); });
+        row.appendChild(btn);
+      }
+    }
+    card.appendChild(row);
+    box.appendChild(card);
   }
 
   // ---------------- cutscenes ----------------
@@ -225,6 +378,7 @@ class Game {
         levelId,
         save: this.save,
         hud: this.hud,
+        renderer: this.renderer,
         onComplete: (results) => this.onLevelComplete(results),
         onGameOver: () => this.onGameOver(),
         onScene: (sceneId, cb) => {

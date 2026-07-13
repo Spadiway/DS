@@ -23,7 +23,8 @@ export class LevelSession {
     this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 300);
     this.camYaw = 0;
 
-    this.built = buildLevel(this.def, this.scene);
+    const maxAniso = opts.renderer ? opts.renderer.capabilities.getMaxAnisotropy() : 4;
+    this.built = buildLevel(this.def, this.scene, this.levelId, Math.min(4, maxAniso));
 
     // effects
     this.sparkles = [];
@@ -70,6 +71,13 @@ export class LevelSession {
         this.bossIntroDone = true;
       }
     }
+
+    // ambient fx state
+    this._prevInWater = false;
+    this._dustT = 0;
+    this._emberT = 0;
+    this._lavaBase = new THREE.Color(0xff5a1f);
+    this._lavaHot = new THREE.Color(0xffa53f);
 
     // run state
     this.elapsed = 0;
@@ -365,6 +373,63 @@ export class LevelSession {
       if (cl.position.x > this.def.bounds.maxX + 30) cl.position.x = this.def.bounds.minX - 30;
     }
 
+    // ---- ambient fx: lava glow pulse + rising embers ----
+    for (let i = 0; i < this.built.lavaMats.length; i++) {
+      const k = 0.5 + 0.5 * Math.sin(this.elapsed * 2.6 + i * 1.7);
+      this.built.lavaMats[i].color.lerpColors(this._lavaBase, this._lavaHot, k);
+    }
+    if (this.def.lavas.length) {
+      this._emberT -= dt;
+      if (this._emberT <= 0) {
+        this._emberT = 0.35;
+        const zone = this.def.lavas[Math.floor(Math.random() * this.def.lavas.length)];
+        const a = Math.random() * Math.PI * 2;
+        const rr = Math.random() * zone.r * 0.8;
+        const m = makeSparkle(0xffa53f);
+        m.position.set(zone.x + Math.cos(a) * rr, 0.15, zone.z + Math.sin(a) * rr);
+        this.scene.add(m);
+        this.sparkles.push({ mesh: m, vel: new THREE.Vector3((Math.random() - 0.5) * 0.6, 3.4 + Math.random() * 2, (Math.random() - 0.5) * 0.6), life: 0.8 });
+      }
+    }
+
+    // ---- ambient fx: water ripples + wave shimmer ----
+    for (const rp of this.built.ripples) {
+      rp.t += dt;
+      const k = (rp.t % 1.8) / 1.8;
+      const s = 0.65 + k * 0.8;
+      rp.mesh.scale.set(s, s, 1);
+      rp.mesh.material.opacity = 0.42 * (1 - k);
+    }
+    for (let i = 0; i < this.built.waterMats.length; i++) {
+      this.built.waterMats[i].opacity = 0.68 + Math.sin(this.elapsed * 2 + i) * 0.08;
+    }
+
+    // ---- player fx: dust, landing puff, splash ----
+    const spd = Math.hypot(this.player.vel.x, this.player.vel.z);
+    if (this.player.onGround && !this.player.inWater && spd > 4.5) {
+      this._dustT -= dt;
+      if (this._dustT <= 0) {
+        this._dustT = 0.14;
+        const m = makeSparkle(0xd8d2c0);
+        m.scale.setScalar(0.8);
+        m.position.set(
+          this.player.pos.x - Math.sin(this.player.heading) * 0.4,
+          this.player.pos.y + 0.08,
+          this.player.pos.z - Math.cos(this.player.heading) * 0.4
+        );
+        this.scene.add(m);
+        this.sparkles.push({ mesh: m, vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, 1 + Math.random(), (Math.random() - 0.5) * 1.2), life: 0.35 });
+      }
+    }
+    if (this.player.justLanded) {
+      this.burst(this.player.pos.x, this.player.pos.y + 0.1, this.player.pos.z, 0xd8d2c0, 6);
+    }
+    if (this.player.inWater && !this._prevInWater) {
+      Audio.sfx('splash');
+      this.burst(this.player.pos.x, this.player.pos.y + 0.2, this.player.pos.z, 0x9fd8ff, 9);
+    }
+    this._prevInWater = this.player.inWater;
+
     // portal
     this.updatePortal(dt);
     const pdx = this.built.portal.group.position.x - this.player.pos.x;
@@ -390,8 +455,9 @@ export class LevelSession {
     this.camera.position.z += (tz - this.camera.position.z) * Math.min(1, dt * 5);
     this.camera.lookAt(this.player.pos.x, this.player.pos.y + 1.4, this.player.pos.z);
 
-    // HUD timer
+    // HUD timer + minimap
     this.hud.setTimer(this.elapsed);
+    this.hud.drawMinimap(this);
   }
 
   selectGadget(g) {

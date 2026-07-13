@@ -47,8 +47,22 @@ En móvil/tablet aparecen un joystick virtual y botones A (salto) / B (red).
   estampe contra el muro y dale con la red mientras está mareado (×3).
 - Galletas = energía. 3 corazones, 3 vidas, banderas de punto de control y
   portal temporal que se abre al capturar las mascotas requeridas.
+- **Minimapa en el HUD:** terreno, lava/agua, plataformas, mascotas coloreadas
+  por estado de alerta, jefe, banderas y portal en tiempo real.
 - **Guardado:** 3 ranuras en `localStorage`, autoguardado al superar nivel.
 - **Idiomas:** Español e Inglés (menú principal).
+
+### Gráficos (v0.2)
+
+- Sombras dinámicas (luz solar direccional con PCF suave) + sombra de contacto.
+- Contornos cel-shading en personajes (silueta estilo dibujo animado).
+- Cúpula de cielo con degradado por época, sol brillante y nubes a la deriva.
+- Anillo de colinas/mesetas en el borde de cada nivel (el mundo ya no "se corta").
+- Vegetación y detalles dispersos por bioma: hierba, flores, setas, cristales.
+- Lava con pulso incandescente y ascuas; estanques con ondas animadas.
+- Polvo al correr, nube al aterrizar, salpicaduras al entrar al agua y viñeta sutil.
+- **Mapa de Épocas rediseñado:** archipiélago navegable con 8 islas, ruta
+  punteada, progreso por mundo y panel de niveles.
 
 ## 🗺️ Contenido de la Fase 1
 

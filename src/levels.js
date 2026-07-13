@@ -14,19 +14,25 @@ export const WORLDS = [
 
 export const THEMES = {
   plains: {
-    sky: 0x7ec8ff, fog: 0xa8d8f0, fogNear: 40, fogFar: 110,
+    sky: 0x7ec8ff, fog: 0xa8d8f0, fogNear: 40, fogFar: 130,
+    skyTop: '#3f8fe8', skyHorizon: '#bfe4ff',
     groundBase: '#5eab3f', groundBlotch: ['#4c9635', '#6fbc4c', '#579f3a', '#7cc95a'],
-    sun: 0xfff2cc,
+    sun: 0xfff2cc, hill: 0x4c8a3a,
+    details: [['grass', 0.45], ['flower', 0.35], ['fern', 0.2]],
   },
   swamp: {
-    sky: 0x9bb56b, fog: 0xa8b87a, fogNear: 26, fogFar: 85,
+    sky: 0x9bb56b, fog: 0xa8b87a, fogNear: 26, fogFar: 100,
+    skyTop: '#7fa04e', skyHorizon: '#dcdca6',
     groundBase: '#6d7a3a', groundBlotch: ['#5d6a30', '#7c8a46', '#4f5c28', '#87954f'],
-    sun: 0xf0e6b8,
+    sun: 0xf0e6b8, hill: 0x54613a,
+    details: [['grass', 0.4], ['mushroom', 0.35], ['fern', 0.25]],
   },
   canyon: {
-    sky: 0xffb066, fog: 0xe8a05c, fogNear: 34, fogFar: 100,
+    sky: 0xffb066, fog: 0xe8a05c, fogNear: 34, fogFar: 120,
+    skyTop: '#f07f2e', skyHorizon: '#ffdfb0',
     groundBase: '#b06a3b', groundBlotch: ['#9a5a30', '#c07a46', '#8a4f28', '#c98a52'],
-    sun: 0xffd9a0,
+    sun: 0xffd9a0, hill: 0x8a4a2e,
+    details: [['crystal', 0.3], ['rock', 0.45], ['drygrass', 0.25]],
   },
 };
 

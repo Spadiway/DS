@@ -27,6 +27,8 @@ export class Pet {
     this.model = model;
     this.group = model.group;
     this.group.position.set(def.x, 0, def.z);
+    this.baseScale = 0.9 + Math.random() * 0.2;
+    this.group.scale.setScalar(this.baseScale);
     scene.add(this.group);
 
     this.state = 'calm';         // calm | alert | panic | captured
@@ -70,7 +72,7 @@ export class Pet {
       if (this.captureAnimT >= 0) {
         this.captureAnimT += dt;
         const k = Math.max(0, 1 - this.captureAnimT * 2.2);
-        this.group.scale.setScalar(k);
+        this.group.scale.setScalar(k * this.baseScale);
         this.group.rotation.y += dt * 18;
         this.group.position.y += dt * 2.2;
         if (k <= 0) { this.group.visible = false; this.captureAnimT = -1; }

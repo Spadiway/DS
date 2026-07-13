@@ -3,6 +3,8 @@ import * as THREE from '../lib/three.module.js';
 import {
   toonMat, makeTree, makePalm, makeFern, makeRock, makeBone, makeVolcano,
   makeCookie, makeFlag, makePortal, makeCloud, makeGroundTexture,
+  makeGrass, makeFlower, makeMushroom, makeCrystal, makeHill,
+  makeSkyDome, makeSunSprite, enableShadows,
 } from './models.js';
 import { THEMES } from './levels.js';
 
@@ -11,37 +13,100 @@ const DECO_FACTORIES = {
   rock: makeRock, bone: makeBone, volcano: makeVolcano,
 };
 
-export function buildLevel(def, scene) {
+// deterministic per-level RNG so scenery is stable between runs
+function seededRng(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return function () {
+    h |= 0; h = (h + 0x6D2B79F5) | 0;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function buildLevel(def, scene, levelId = 'x', maxAnisotropy = 4) {
   const theme = THEMES[def.theme];
   scene.background = new THREE.Color(theme.sky);
   scene.fog = new THREE.Fog(theme.fog, theme.fogNear, theme.fogFar);
 
-  // ---- lights ----
-  const hemi = new THREE.HemisphereLight(theme.sky, 0x554433, 1.15);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(theme.sun, 1.6);
-  sun.position.set(18, 30, 12);
-  scene.add(sun);
-
-  // ---- ground ----
   const W = def.bounds.maxX - def.bounds.minX;
   const D = def.bounds.maxZ - def.bounds.minZ;
+  const cx = (def.bounds.minX + def.bounds.maxX) / 2;
+  const cz = (def.bounds.minZ + def.bounds.maxZ) / 2;
+
+  // ---- sky dome + sun sprite ----
+  const dome = makeSkyDome(theme.skyTop, theme.skyHorizon);
+  dome.position.set(cx, 0, cz);
+  scene.add(dome);
+  const sunDir = new THREE.Vector3(0.55, 0.8, 0.35).normalize();
+  const sunSprite = makeSunSprite();
+  sunSprite.position.copy(sunDir).multiplyScalar(140).add(new THREE.Vector3(cx, 0, cz));
+  sunSprite.scale.setScalar(48);
+  scene.add(sunSprite);
+
+  // ---- lights (with real-time shadows) ----
+  const hemi = new THREE.HemisphereLight(theme.sky, 0x554433, 1.1);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(theme.sun, 1.55);
+  sun.position.set(cx + sunDir.x * 55, sunDir.y * 55, cz + sunDir.z * 55);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  const span = Math.max(W, D) * 0.62;
+  sun.shadow.camera.left = -span;
+  sun.shadow.camera.right = span;
+  sun.shadow.camera.top = span;
+  sun.shadow.camera.bottom = -span;
+  sun.shadow.camera.near = 5;
+  sun.shadow.camera.far = 130;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.03;
+  sun.target.position.set(cx, 0, cz);
+  scene.add(sun);
+  scene.add(sun.target);
+
+  // ---- ground ----
   const tex = makeGroundTexture(theme.groundBase, theme.groundBlotch);
-  tex.repeat.set(W / 7, D / 7);
+  tex.repeat.set(W / 10, D / 10);
+  tex.anisotropy = maxAnisotropy;
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(W + 70, D + 70),
+    new THREE.PlaneGeometry(W + 90, D + 90),
     new THREE.MeshToonMaterial({ map: tex })
   );
-  ground.material.gradientMap = null;
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set((def.bounds.minX + def.bounds.maxX) / 2, 0, (def.bounds.minZ + def.bounds.maxZ) / 2);
+  ground.position.set(cx, 0, cz);
+  ground.receiveShadow = true;
   scene.add(ground);
+
+  // ---- border hills ring (just outside the playable bounds) ----
+  const rng = seededRng(levelId + ':' + def.theme);
+  const step = 11;
+  const ring = [];
+  for (let x = def.bounds.minX - 8; x <= def.bounds.maxX + 8; x += step) {
+    ring.push([x + (rng() - 0.5) * 6, def.bounds.minZ - 8 - rng() * 10]);
+    ring.push([x + (rng() - 0.5) * 6, def.bounds.maxZ + 8 + rng() * 10]);
+  }
+  for (let z = def.bounds.minZ - 8; z <= def.bounds.maxZ + 8; z += step) {
+    ring.push([def.bounds.minX - 8 - rng() * 10, z + (rng() - 0.5) * 6]);
+    ring.push([def.bounds.maxX + 8 + rng() * 10, z + (rng() - 0.5) * 6]);
+  }
+  for (const [hx, hz] of ring) {
+    const hill = makeHill(2.5 + rng() * 4.5, theme.hill);
+    hill.position.x = hx;
+    hill.position.z = hz;
+    scene.add(hill);
+  }
 
   // ---- platforms (colliders) ----
   const colliders = [];
   for (const p of def.platforms) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, p.d), toonMat(p.color));
     mesh.position.set(p.x, p.y, p.z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     scene.add(mesh);
     colliders.push({
       minX: p.x - p.w / 2, maxX: p.x + p.w / 2,
@@ -57,6 +122,46 @@ export function buildLevel(def, scene) {
     const mesh = make(d.s ?? 1);
     mesh.position.x = d.x;
     mesh.position.z = d.z;
+    enableShadows(mesh);
+    scene.add(mesh);
+  }
+
+  // ---- scattered small details (grass, flowers, mushrooms, crystals…) ----
+  const detailFactories = {
+    grass: (s) => makeGrass(s),
+    drygrass: (s) => makeGrass(s, 0xc2a24a),
+    flower: makeFlower,
+    mushroom: makeMushroom,
+    crystal: makeCrystal,
+    fern: makeFern,
+    rock: (s) => makeRock(s * 0.5),
+  };
+  const blocked = (x, z) => {
+    if (inCircleZone(def.lavas, x, z) || inCircleZone(def.waters, x, z)) return true;
+    for (const c of colliders) {
+      if (x > c.minX - 0.6 && x < c.maxX + 0.6 && z > c.minZ - 0.6 && z < c.maxZ + 0.6) return true;
+    }
+    const nearPts = [def.spawn, def.exit, ...def.checkpoints];
+    for (const p of nearPts) {
+      const dx = x - p[0], dz = z - p[1];
+      if (dx * dx + dz * dz < 12) return true;
+    }
+    return false;
+  };
+  for (let i = 0; i < 56; i++) {
+    const x = def.bounds.minX + 2 + rng() * (W - 4);
+    const z = def.bounds.minZ + 2 + rng() * (D - 4);
+    if (blocked(x, z)) continue;
+    let pick = rng();
+    let kind = theme.details[theme.details.length - 1][0];
+    for (const [name, w] of theme.details) {
+      if (pick < w) { kind = name; break; }
+      pick -= w;
+    }
+    const mesh = detailFactories[kind](0.7 + rng() * 0.7);
+    mesh.position.x = x;
+    mesh.position.z = z;
+    mesh.rotation.y = rng() * Math.PI * 2;
     scene.add(mesh);
   }
 
@@ -78,8 +183,9 @@ export function buildLevel(def, scene) {
     lavaMats.push(mat);
   }
 
-  // ---- water ponds ----
+  // ---- water ponds (with animated ripple rings) ----
   const waterMats = [];
+  const ripples = [];
   for (const w of def.waters) {
     const mat = new THREE.MeshBasicMaterial({ color: 0x3a86c8, transparent: true, opacity: 0.75 });
     const pond = new THREE.Mesh(new THREE.CircleGeometry(w.r, 24), mat);
@@ -94,6 +200,14 @@ export function buildLevel(def, scene) {
     rim.position.set(w.x, 0.04, w.z);
     scene.add(rim);
     waterMats.push(mat);
+    const rip = new THREE.Mesh(
+      new THREE.RingGeometry(w.r * 0.5, w.r * 0.56, 24),
+      new THREE.MeshBasicMaterial({ color: 0xcfeaff, transparent: true, opacity: 0.4, depthWrite: false })
+    );
+    rip.rotation.x = -Math.PI / 2;
+    rip.position.set(w.x, 0.07, w.z);
+    scene.add(rip);
+    ripples.push({ mesh: rip, t: Math.random() * 1.6 });
   }
 
   // ---- cookies ----
@@ -102,6 +216,7 @@ export function buildLevel(def, scene) {
     const mesh = makeCookie();
     const y = c[2] !== undefined ? c[2] : 0;
     mesh.position.set(c[0], y + 0.5, c[1]);
+    enableShadows(mesh);
     scene.add(mesh);
     cookies.push({ mesh, taken: false, baseY: y + 0.5 });
   }
@@ -111,6 +226,7 @@ export function buildLevel(def, scene) {
   for (const cp of def.checkpoints) {
     const { group, flagMat } = makeFlag();
     group.position.set(cp[0], groundYAt(colliders, cp[0], cp[1]), cp[1]);
+    enableShadows(group);
     scene.add(group);
     checkpoints.push({ x: cp[0], z: cp[1], flagMat, active: false });
   }
@@ -118,22 +234,19 @@ export function buildLevel(def, scene) {
   // ---- exit portal ----
   const portal = makePortal();
   portal.group.position.set(def.exit[0], groundYAt(colliders, def.exit[0], def.exit[1]), def.exit[1]);
+  enableShadows(portal.group);
   scene.add(portal.group);
 
   // ---- sky clouds ----
   const clouds = [];
   for (let i = 0; i < 6; i++) {
-    const cl = makeCloud(1.4 + Math.random() * 1.6);
-    cl.position.set(
-      def.bounds.minX + Math.random() * W,
-      16 + Math.random() * 8,
-      def.bounds.minZ + Math.random() * D
-    );
+    const cl = makeCloud(1.4 + rng() * 1.6);
+    cl.position.set(def.bounds.minX + rng() * W, 16 + rng() * 8, def.bounds.minZ + rng() * D);
     scene.add(cl);
     clouds.push(cl);
   }
 
-  return { colliders, lavaMats, waterMats, cookies, checkpoints, portal, clouds, theme };
+  return { colliders, lavaMats, waterMats, ripples, cookies, checkpoints, portal, clouds, theme };
 }
 
 /** Highest walkable surface at (x, z) for a standing character. */

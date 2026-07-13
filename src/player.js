@@ -31,6 +31,7 @@ export class Player {
     this.lives = 3;
     this.hurtCooldown = 0;
     this.animT = 0;
+    this.justLanded = false;
 
     // net swing
     this.swingT = -1;       // -1 = idle, else seconds since swing start
@@ -153,10 +154,11 @@ export class Player {
     resolveWalls(this.ctx.colliders, this.pos, RADIUS, this.pos.y);
 
     // ground
+    this.justLanded = false;
     const gy = groundYAt(this.ctx.colliders, this.pos.x, this.pos.z, this.pos.y);
     if (this.pos.y <= gy) {
       this.pos.y = gy;
-      if (!this.onGround && this.vel.y < -12) Audio.sfx('splash');
+      if (!this.onGround && this.vel.y < -8) this.justLanded = true;
       this.vel.y = 0;
       this.onGround = true;
     } else if (this.pos.y > gy + 0.02) {

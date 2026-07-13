@@ -10,6 +10,7 @@
 <body>
 <div id="app">
   <div id="canvas-holder"></div>
+  <div id="vignette"></div>
 
   <!-- ============ HUD ============ -->
   <div id="hud" class="hidden">
@@ -20,6 +21,7 @@
     <div id="hud-top-right">
       <div id="hud-captures"></div>
       <div id="hud-timer">0:00</div>
+      <canvas id="hud-minimap" width="150" height="150"></canvas>
     </div>
     <div id="hud-gadgets"></div>
     <div id="hud-toast" class="hidden"></div>
@@ -52,7 +54,7 @@
       </div>
       <canvas id="title-benito" width="220" height="220"></canvas>
       <div class="press-start blink" data-i18n="pressStart"></div>
-      <div class="title-footer">v0.1 — Fase 1 · Mundo 1</div>
+      <div class="title-footer">v0.2 — Fase 1 · Mundo 1</div>
     </div>
   </div>
 
@@ -79,7 +81,9 @@
       <h2 data-i18n="worldMap"></h2>
       <div id="map-stats"></div>
     </div>
-    <div id="world-list"></div>
+    <div id="map-canvas-wrap"><canvas id="map-canvas" width="880" height="300"></canvas></div>
+    <div id="map-hint" data-i18n="mapHint"></div>
+    <div id="world-detail"></div>
     <div class="map-footer">
       <button class="menu-btn" id="map-menu-btn" data-i18n="backToMenu"></button>
     </div>

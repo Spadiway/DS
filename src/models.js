@@ -30,15 +30,51 @@ function cone(r, h, color, seg = 12) {
   return new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), toonMat(color));
 }
 
-// ---------- blob shadow ----------
+// ---------- blob shadow (subtle contact shadow; real shadows do the rest) ----------
 export function blobShadow(radius = 0.5) {
   const m = new THREE.Mesh(
     new THREE.CircleGeometry(radius, 20),
-    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false })
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false })
   );
   m.rotation.x = -Math.PI / 2;
   m.renderOrder = 1;
   return m;
+}
+
+// ---------- shadow + outline helpers ----------
+export function enableShadows(root, { cast = true, receive = false } = {}) {
+  root.traverse((o) => {
+    if (o.isMesh && o.material && !o.material.isMeshBasicMaterial) {
+      o.castShadow = cast;
+      o.receiveShadow = receive;
+    }
+  });
+  return root;
+}
+
+const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x1c1e2a, side: THREE.BackSide });
+
+/** Classic cel outline: inflated back-face hull behind each solid mesh. */
+export function addOutlines(root, thickness = 0.05, minRadius = 0.1) {
+  const targets = [];
+  root.traverse((o) => {
+    if (o.isMesh && o.material && !o.material.isMeshBasicMaterial && !o.userData.noOutline) {
+      targets.push(o);
+    }
+  });
+  for (const src of targets) {
+    const geo = src.geometry;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const worldR = geo.boundingSphere.radius * Math.max(src.scale.x, src.scale.y, src.scale.z);
+    if (worldR < minRadius) continue;
+    const out = new THREE.Mesh(geo, OUTLINE_MAT);
+    out.position.copy(src.position);
+    out.rotation.copy(src.rotation);
+    out.scale.copy(src.scale).multiplyScalar(1 + thickness / Math.max(0.14, worldR));
+    out.castShadow = false;
+    src.parent.add(out);
+  }
+  return root;
 }
 
 // ============================================================
@@ -101,6 +137,17 @@ export function makeBenito() {
   const nose = sphere(0.05, PINK, 1.2, 0.8, 0.8);
   nose.position.set(0, -0.06, 0.46);
   head.add(nose);
+  // whiskers
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const wk = cyl(0.008, 0.008, 0.34, 0xe8e4d8, 4);
+      wk.userData.noOutline = true;
+      wk.position.set(sx * 0.42, -0.12 + i * 0.05, 0.3);
+      wk.rotation.z = Math.PI / 2;
+      wk.rotation.y = sx * (0.25 - i * 0.12);
+      head.add(wk);
+    }
+  }
 
   // legs (stubby)
   for (const sx of [-1, 1]) {
@@ -158,6 +205,8 @@ export function makeBenito() {
   const shadow = blobShadow(0.62);
   g.add(shadow);
 
+  addOutlines(g);
+  enableShadows(g);
   return { group: g, head, armL, armR, tail, net, shadow, body };
 }
 
@@ -261,6 +310,8 @@ export function makePet(type = 'amarillo') {
   const shadow = blobShadow(0.34);
   g.add(shadow);
 
+  addOutlines(g, 0.04);
+  enableShadows(g);
   return { group: g, head, lightMat, shadow };
 }
 
@@ -337,6 +388,8 @@ export function makeBoss() {
   const shadow = blobShadow(1.35);
   g.add(shadow);
 
+  addOutlines(g, 0.07);
+  enableShadows(g);
   g.scale.setScalar(1.5);
   return { group: g, head, lightMat, shadow };
 }
@@ -489,6 +542,128 @@ export function makeCloud(scale = 1) {
   return g;
 }
 
+// ---------- small scenery details (scattered by the level builder) ----------
+export function makeGrass(scale = 1, color = 0x4caf50) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const blade = cone(0.05, 0.35 + Math.random() * 0.25, color, 4);
+    blade.position.set((Math.random() - 0.5) * 0.22, 0.18, (Math.random() - 0.5) * 0.22);
+    blade.rotation.set((Math.random() - 0.5) * 0.5, Math.random() * Math.PI, (Math.random() - 0.5) * 0.5);
+    g.add(blade);
+  }
+  g.scale.setScalar(scale);
+  return g;
+}
+
+export function makeFlower(scale = 1) {
+  const g = new THREE.Group();
+  const stem = cyl(0.02, 0.025, 0.35, 0x3fa34d, 5);
+  stem.position.y = 0.17;
+  g.add(stem);
+  const petalColor = [0xff8fb3, 0xffe066, 0xffffff, 0xc490ff][Math.floor(Math.random() * 4)];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const p = sphere(0.055, petalColor);
+    p.position.set(Math.cos(a) * 0.08, 0.38, Math.sin(a) * 0.08);
+    g.add(p);
+  }
+  const center = sphere(0.05, 0xf5a623);
+  center.position.y = 0.4;
+  g.add(center);
+  g.scale.setScalar(scale);
+  return g;
+}
+
+export function makeMushroom(scale = 1) {
+  const g = new THREE.Group();
+  const stem = cyl(0.07, 0.1, 0.26, 0xe8dcc0, 8);
+  stem.position.y = 0.13;
+  g.add(stem);
+  const cap = sphere(0.18, 0xc0392b, 1, 0.62, 1);
+  cap.position.y = 0.28;
+  g.add(cap);
+  for (let i = 0; i < 3; i++) {
+    const dot = sphere(0.035, 0xf5f0e1);
+    const a = Math.random() * Math.PI * 2;
+    dot.position.set(Math.cos(a) * 0.1, 0.36, Math.sin(a) * 0.1);
+    g.add(dot);
+  }
+  g.scale.setScalar(scale);
+  return g;
+}
+
+export function makeCrystal(scale = 1) {
+  const g = new THREE.Group();
+  const big = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.28, 0),
+    toonMat(0x7ee8fa, { emissive: 0x1d5f70 })
+  );
+  big.scale.y = 1.7;
+  big.position.y = 0.4;
+  big.rotation.y = Math.random() * Math.PI;
+  g.add(big);
+  const small = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.16, 0),
+    toonMat(0xa5f0ff, { emissive: 0x1d5f70 })
+  );
+  small.scale.y = 1.5;
+  small.position.set(0.22, 0.2, 0.08);
+  small.rotation.z = 0.4;
+  g.add(small);
+  g.scale.setScalar(scale);
+  return g;
+}
+
+/** Border hill / mesa ring piece placed outside the playable bounds. */
+export function makeHill(scale = 1, color = 0x4c8a3a) {
+  const m = cone(1.1, 1.7, color, 7);
+  m.position.y = 0.8 * scale;
+  m.scale.set(scale * (0.8 + Math.random() * 0.6), scale, scale * (0.8 + Math.random() * 0.6));
+  m.rotation.y = Math.random() * Math.PI;
+  return m;
+}
+
+// ---------- sky ----------
+export function makeSkyDome(topColor, horizonColor) {
+  const c = document.createElement('canvas');
+  c.width = 2;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, topColor);
+  grad.addColorStop(0.52, horizonColor);
+  grad.addColorStop(1, horizonColor);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(165, 20, 14),
+    new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false })
+  );
+  dome.renderOrder = -2;
+  return dome;
+}
+
+export function makeSunSprite() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(255,252,230,1)');
+  grad.addColorStop(0.25, 'rgba(255,240,180,0.9)');
+  grad.addColorStop(1, 'rgba(255,230,150,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthWrite: false, fog: false,
+    blending: THREE.AdditiveBlending,
+  }));
+  sp.renderOrder = -1;
+  return sp;
+}
+
 export function makeProjectile() {
   return new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 10, 8),
@@ -503,22 +678,36 @@ export function makeSparkle(color = 0xffe066) {
   );
 }
 
-// ---------- ground texture (retro pixel blotches) ----------
-export function makeGroundTexture(base, blotches, size = 128) {
+// ---------- ground texture (soft painterly patches + fine speckle) ----------
+export function makeGroundTexture(base, blotches, size = 256) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const ctx = c.getContext('2d');
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 260; i++) {
+  // large soft patches
+  for (let i = 0; i < 46; i++) {
+    ctx.globalAlpha = 0.12 + Math.random() * 0.14;
+    ctx.fillStyle = blotches[i % blotches.length];
+    const r = 14 + Math.random() * 34;
+    ctx.beginPath();
+    ctx.ellipse(
+      Math.random() * size, Math.random() * size,
+      r, r * (0.45 + Math.random() * 0.7),
+      Math.random() * Math.PI, 0, Math.PI * 2
+    );
+    ctx.fill();
+  }
+  // fine speckle
+  ctx.globalAlpha = 0.4;
+  for (let i = 0; i < 500; i++) {
     ctx.fillStyle = blotches[Math.floor(Math.random() * blotches.length)];
-    const s = 2 + Math.random() * 5;
+    const s = 1 + Math.random() * 2.6;
     ctx.fillRect(Math.random() * size, Math.random() * size, s, s);
   }
+  ctx.globalAlpha = 1;
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
