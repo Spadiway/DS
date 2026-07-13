@@ -1,0 +1,18 @@
+{
+  "name": "benito-escape",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Benito Escape - El Juego de Mascotas. Plataformas 3D de captura de mascotas renegadas.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.166.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

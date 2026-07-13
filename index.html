@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Benito Escape — El Juego de Mascotas</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐱</text></svg>" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div id="hud-top-left">
+        <div id="hud-lives"></div>
+        <div id="hud-health"></div>
+        <div id="hud-energy"><div id="hud-energy-fill"></div></div>
+      </div>
+      <div id="hud-top-right">
+        <div id="hud-captures"></div>
+        <div id="hud-level-name"></div>
+      </div>
+      <div id="hud-gadgets"></div>
+      <div id="hud-radar" class="hidden"><canvas id="radar-canvas" width="140" height="140"></canvas></div>
+      <div id="hud-message" class="hidden"></div>
+    </div>
+
+    <!-- Diálogos -->
+    <div id="dialog-box" class="hidden">
+      <div id="dialog-portrait"></div>
+      <div id="dialog-content">
+        <div id="dialog-name"></div>
+        <div id="dialog-text"></div>
+        <div id="dialog-hint"></div>
+      </div>
+    </div>
+
+    <!-- Menú principal -->
+    <div id="menu" class="">
+      <h1 id="menu-title">BENITO ESCAPE</h1>
+      <p id="menu-subtitle"></p>
+      <div id="menu-buttons"></div>
+      <p id="menu-footer"></p>
+    </div>
+
+    <!-- Selector de niveles -->
+    <div id="level-select" class="hidden">
+      <h2 id="ls-title"></h2>
+      <div id="ls-grid"></div>
+      <div id="ls-stats"></div>
+      <button id="ls-back" class="menu-btn"></button>
+    </div>
+
+    <!-- Pausa -->
+    <div id="pause-menu" class="hidden">
+      <h2 id="pause-title"></h2>
+      <div id="pause-buttons"></div>
+    </div>
+
+    <!-- Resultados de nivel -->
+    <div id="results" class="hidden">
+      <h2 id="results-title"></h2>
+      <div id="results-body"></div>
+      <button id="results-continue" class="menu-btn"></button>
+    </div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
