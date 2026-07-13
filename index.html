@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BENITO ESCAPE — El Juego de Mascotas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18' r='11' fill='%239aa1ac'/%3E%3Cpath d='M7 12 L5 3 L13 8 Z' fill='%239aa1ac'/%3E%3Cpath d='M25 12 L27 3 L19 8 Z' fill='%239aa1ac'/%3E%3Ccircle cx='12' cy='17' r='2.4' fill='%233ddc84'/%3E%3Ccircle cx='20' cy='17' r='2.4' fill='%233ddc84'/%3E%3Cellipse cx='16' cy='22' rx='2' ry='1.4' fill='%23f2a6b5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <div id="canvas-holder"></div>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="hud-top-left">
+      <div id="hud-lives"></div>
+      <div id="hud-energy"></div>
+    </div>
+    <div id="hud-top-right">
+      <div id="hud-captures"></div>
+      <div id="hud-timer">0:00</div>
+    </div>
+    <div id="hud-gadgets"></div>
+    <div id="hud-toast" class="hidden"></div>
+    <div id="hud-comm" class="hidden">
+      <canvas id="comm-portrait" width="72" height="72"></canvas>
+      <div id="comm-body">
+        <div id="comm-name"></div>
+        <div id="comm-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOUCH CONTROLS ============ -->
+  <div id="touch" class="hidden">
+    <div id="stick-zone"><div id="stick-base"><div id="stick-nub"></div></div></div>
+    <div id="touch-buttons">
+      <button id="btn-jump" class="tbtn">A</button>
+      <button id="btn-net" class="tbtn">B</button>
+    </div>
+  </div>
+
+  <!-- ============ TITLE ============ -->
+  <div id="screen-title" class="screen">
+    <div class="title-sky"></div>
+    <div class="title-card">
+      <div class="title-logo">
+        <span class="logo-line1">BENITO</span>
+        <span class="logo-line2">ESCAPE</span>
+        <span class="logo-sub" data-i18n="subtitle"></span>
+      </div>
+      <canvas id="title-benito" width="220" height="220"></canvas>
+      <div class="press-start blink" data-i18n="pressStart"></div>
+      <div class="title-footer">v0.1 — Fase 1 · Mundo 1</div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN MENU ============ -->
+  <div id="screen-menu" class="screen hidden">
+    <div class="panel">
+      <h2 data-i18n="mainMenu"></h2>
+      <div class="menu-list" id="menu-list"></div>
+    </div>
+  </div>
+
+  <!-- ============ SAVE SLOTS ============ -->
+  <div id="screen-slots" class="screen hidden">
+    <div class="panel">
+      <h2 data-i18n="chooseSlot"></h2>
+      <div id="slot-list"></div>
+      <button class="menu-btn back-btn" id="slots-back" data-i18n="back"></button>
+    </div>
+  </div>
+
+  <!-- ============ WORLD MAP ============ -->
+  <div id="screen-map" class="screen hidden">
+    <div class="map-header">
+      <h2 data-i18n="worldMap"></h2>
+      <div id="map-stats"></div>
+    </div>
+    <div id="world-list"></div>
+    <div class="map-footer">
+      <button class="menu-btn" id="map-menu-btn" data-i18n="backToMenu"></button>
+    </div>
+  </div>
+
+  <!-- ============ CUTSCENE ============ -->
+  <div id="screen-cutscene" class="screen hidden">
+    <div id="cutscene-backdrop"></div>
+    <div id="cutscene-box">
+      <canvas id="cutscene-portrait" width="96" height="96"></canvas>
+      <div id="cutscene-body">
+        <div id="cutscene-name"></div>
+        <div id="cutscene-text"></div>
+        <div id="cutscene-hint" data-i18n="advanceHint"></div>
+      </div>
+    </div>
+    <button id="cutscene-skip" data-i18n="skip"></button>
+  </div>
+
+  <!-- ============ RESULTS ============ -->
+  <div id="screen-results" class="screen hidden">
+    <div class="panel results-panel">
+      <h2 data-i18n="levelClear"></h2>
+      <div id="results-rows"></div>
+      <button class="menu-btn" id="results-continue" data-i18n="continue"></button>
+    </div>
+  </div>
+
+  <!-- ============ PAUSE ============ -->
+  <div id="screen-pause" class="screen hidden translucent">
+    <div class="panel">
+      <h2 data-i18n="paused"></h2>
+      <div class="menu-list" id="pause-list"></div>
+    </div>
+  </div>
+
+  <!-- ============ GAME OVER ============ -->
+  <div id="screen-gameover" class="screen hidden">
+    <div class="panel">
+      <h2 data-i18n="gameOver"></h2>
+      <p data-i18n="gameOverText"></p>
+      <button class="menu-btn" id="gameover-continue" data-i18n="backToMap"></button>
+    </div>
+  </div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
