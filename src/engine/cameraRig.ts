@@ -66,8 +66,10 @@ function distanceBlockedBy(
     if (along < 0.5 || along > best) continue;
     const perp = Math.abs(px * dirZ - pz * dirX);
     if (perp > b.r) continue;
-    // Se coloca la cámara justo delante del obstáculo
-    best = Math.max(2.2, along - b.r * 0.6);
+    // Se coloca justo delante del obstáculo, pero nunca encima de Benito:
+    // por debajo de este mínimo el personaje llena la pantalla y se pierde el
+    // contexto del escenario.
+    best = Math.max(4.6, along - b.r * 0.7);
   }
   return best;
 }
@@ -119,10 +121,14 @@ export function updateCamera(
     rig.distance = damp(rig.distance, Math.min(rig.targetDistance, clear), lambda, dt);
     rig.fovTarget = 58 + speedRatio * 8;
 
-    const cosP = Math.cos(rig.pitch);
+    // Cuanto más cerca queda la cámara, más se eleva: evita mirar de frente a
+    // la espalda del personaje cuando un árbol la ha empujado hacia dentro.
+    const closeness = 1 - Math.min(1, (rig.distance - 4.6) / 4);
+    const pitch = rig.pitch + closeness * 0.22;
+    const cosP = Math.cos(pitch);
     desiredPos.set(
       target.x - Math.sin(rig.yaw) * rig.distance * cosP,
-      target.y + rig.height + Math.sin(rig.pitch) * rig.distance,
+      target.y + rig.height + closeness * 0.5 + Math.sin(pitch) * rig.distance,
       target.z - Math.cos(rig.yaw) * rig.distance * cosP,
     );
 

@@ -50,7 +50,9 @@ export type PropKind =
   | 'signpost'
   | 'barrel'
   | 'lampPost'
-  | 'archway';
+  | 'archway'
+  | 'broadleaf'
+  | 'bush';
 
 export type LevelSpec = {
   id: string;
@@ -125,8 +127,10 @@ const W1: LevelSpec[] = [
       fog: 0xd8ecff,
     }),
     props: [
-      { kind: 'palm', count: 26, scale: [1, 1.6] },
-      { kind: 'fern', count: 40, scale: [0.7, 1.3] },
+      { kind: 'broadleaf', count: 30, scale: [1, 1.7] },
+      { kind: 'palm', count: 16, scale: [1, 1.5] },
+      { kind: 'bush', count: 34, scale: [0.8, 1.5] },
+      { kind: 'fern', count: 30, scale: [0.7, 1.3] },
       { kind: 'bone', count: 18, scale: [1, 2.2] },
       { kind: 'rock', count: 22, scale: [0.8, 2] },
       { kind: 'grass', count: 260, scale: [0.6, 1.2] },
@@ -254,8 +258,10 @@ const W2: LevelSpec[] = [
       ambient: 0x5f8f5a,
     }),
     props: [
-      { kind: 'palm', count: 46, scale: [1.4, 2.6] },
-      { kind: 'fern', count: 70, scale: [1, 2] },
+      { kind: 'broadleaf', count: 40, scale: [1.5, 2.6] },
+      { kind: 'palm', count: 26, scale: [1.4, 2.4] },
+      { kind: 'bush', count: 44, scale: [1, 1.8] },
+      { kind: 'fern', count: 50, scale: [1, 2] },
       { kind: 'mushroom', count: 22, scale: [0.8, 1.8] },
       { kind: 'pillar', count: 10, scale: [1, 2] },
       { kind: 'grass', count: 300, scale: [0.8, 1.6] },
@@ -677,7 +683,9 @@ const W5: LevelSpec[] = [
       sunIntensity: 1.5,
     }),
     props: [
-      { kind: 'pine', count: 40, scale: [1.4, 2.8] },
+      { kind: 'broadleaf', count: 26, scale: [1.3, 2.2] },
+      { kind: 'pine', count: 26, scale: [1.4, 2.8] },
+      { kind: 'bush', count: 30, scale: [0.9, 1.6] },
       { kind: 'lantern', count: 30, scale: [1, 1.6] },
       { kind: 'pillar', count: 22, scale: [1, 2.4] },
       { kind: 'banner', count: 18, scale: [1, 2] },
@@ -821,7 +829,9 @@ const W6: LevelSpec[] = [
       sunIntensity: 1.4,
     }),
     props: [
-      { kind: 'pine', count: 36, scale: [1.2, 2.4] },
+      { kind: 'broadleaf', count: 30, scale: [1.2, 2.1] },
+      { kind: 'bush', count: 34, scale: [0.9, 1.5] },
+      { kind: 'pine', count: 20, scale: [1.2, 2.4] },
       { kind: 'neonSign', count: 26, scale: [1, 2.2] },
       { kind: 'lantern', count: 30, scale: [1, 1.5] },
       { kind: 'pipe', count: 16, scale: [1, 2] },

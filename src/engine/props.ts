@@ -224,6 +224,39 @@ const BUILDERS: Record<PropKind, () => Piece[]> = {
     p(C, 'accent', [0, 3.15, 0], [0.12, 0.34, 0.12]),
   ],
 
+  /**
+   * Árbol de copa redonda: la silueta dominante en las referencias. La copa es
+   * un racimo de esferas de dos tonos, no un cono, que es lo que le da el
+   * aspecto mullido de dibujo animado.
+   */
+  broadleaf: () => [
+    p(CYL_TAPER, 'trunk', [0, 0.95, 0], [0.22, 0.95, 0.22], [0.04, 0, 0.05]),
+    // Arranque de raíces
+    p(CYL_TAPER, 'trunk', [0, 0.16, 0], [0.36, 0.18, 0.36]),
+    // Ramas visibles bajo la copa
+    p(CYL_TAPER, 'trunk', [0.36, 1.62, 0.06], [0.09, 0.42, 0.09], [0, 0, -0.72]),
+    p(CYL_TAPER, 'trunk', [-0.32, 1.72, -0.08], [0.08, 0.38, 0.08], [0.1, 0, 0.68]),
+    // Copa: lóbulos grandes alternando tono
+    p(S, 'foliageDark', [0, 2.28, 0], [0.86, 0.72, 0.86]),
+    p(S, 'foliage', [0.48, 2.1, 0.18], [0.56, 0.5, 0.56]),
+    p(S, 'foliage', [-0.42, 2.16, -0.2], [0.5, 0.46, 0.5]),
+    p(S, 'foliageDark', [0.14, 2.12, -0.48], [0.48, 0.44, 0.48]),
+    p(S, 'foliage', [-0.12, 2.66, 0.12], [0.52, 0.46, 0.52]),
+    p(S, 'foliageDark', [0.26, 2.56, -0.26], [0.4, 0.37, 0.4]),
+    // Frutos
+    p(S, 'accent', [0.62, 1.96, 0.42], [0.11, 0.11, 0.11]),
+    p(S, 'accent', [-0.48, 2.02, 0.3], [0.09, 0.09, 0.09]),
+  ],
+
+  /** Arbusto bajo: rellena el suelo entre árboles. */
+  bush: () => [
+    p(S, 'foliageDark', [0, 0.34, 0], [0.56, 0.4, 0.56]),
+    p(S, 'foliage', [0.3, 0.4, 0.12], [0.36, 0.32, 0.36]),
+    p(S, 'foliage', [-0.26, 0.36, -0.16], [0.32, 0.28, 0.32]),
+    p(S, 'foliageDark', [0.06, 0.56, -0.1], [0.3, 0.26, 0.3]),
+    p(S, 'accent', [0.24, 0.6, 0.22], [0.08, 0.08, 0.08]),
+  ],
+
   /** Valla de listones, como las que bordean los caminos de la referencia. */
   fence: () => [
     // Postes

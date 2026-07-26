@@ -146,6 +146,28 @@ export function createTerrainMaterial(opts: {
     mat.map.repeat.set(opts.detailRepeat, opts.detailRepeat);
     mat.map.needsUpdate = true;
   }
+
+  /**
+   * Rotura del tileado. Una sola textura repetida decenas de veces sobre el
+   * terreno deja un patrón de cuadrícula muy evidente. Se muestrea a dos
+   * escalas incomensurables y se combinan: la repetición deja de percibirse
+   * sin necesitar una textura enorme.
+   */
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#ifdef USE_MAP
+         vec3 detailA = texture2D( map, vMapUv ).rgb;
+         vec3 detailB = texture2D( map, vMapUv * 0.2437 + vec2(0.37, 0.61) ).rgb;
+         vec3 detailC = texture2D( map, vMapUv * 3.1211 ).rgb;
+         // Media ponderada: la escala grande manda, la fina solo añade grano
+         vec3 detail = detailA * 0.5 + detailB * 0.34 + detailC * 0.16;
+         // Se recentra en torno a 1 para que multiplique sin oscurecer
+         detail = detail / 0.6;
+         diffuseColor.rgb *= clamp(detail, 0.55, 1.5);
+       #endif`,
+    );
+  };
   return mat;
 }
 

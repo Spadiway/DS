@@ -63,7 +63,18 @@ export type GeneratedLevel = {
 };
 
 /** Props lo bastante altos y opacos como para tapar al jugador. */
-const TALL_PROPS = new Set(['palm', 'pine', 'deadTree', 'pillar', 'monolith', 'neonSign', 'iceSpike', 'crystal']);
+const TALL_PROPS = new Set([
+  'palm',
+  'broadleaf',
+  'pine',
+  'deadTree',
+  'pillar',
+  'monolith',
+  'neonSign',
+  'iceSpike',
+  'crystal',
+  'archway',
+]);
 
 const GATE_REQUIRES: Record<GateObstacle['kind'], string> = {
   punchWall: 'magicPunch',
