@@ -42,7 +42,15 @@ export type PropKind =
   | 'flesh'
   | 'monolith'
   | 'banner'
-  | 'grass';
+  | 'grass'
+  // Mobiliario construido: es lo que puebla el escenario y le da escala
+  | 'fence'
+  | 'logStair'
+  | 'hut'
+  | 'signpost'
+  | 'barrel'
+  | 'lampPost'
+  | 'archway';
 
 export type LevelSpec = {
   id: string;

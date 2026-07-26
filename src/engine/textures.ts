@@ -238,6 +238,51 @@ export function stoneTexture(base: number): THREE.CanvasTexture {
   return tex;
 }
 
+/** Tarima de tablones: para plataformas y suelos construidos. */
+export function plankTexture(base: number): THREE.CanvasTexture {
+  const key = `plank${base}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const size = 128;
+  const { c, ctx } = canvas(size);
+  ctx.fillStyle = hex(base);
+  ctx.fillRect(0, 0, size, size);
+
+  const planks = 4;
+  const pw = size / planks;
+  for (let i = 0; i < planks; i++) {
+    // Cada tablón con su tono: nunca dos iguales seguidos
+    const tone = 0.86 + ((i * 37) % 5) * 0.07;
+    ctx.fillStyle = shade(base, tone);
+    ctx.fillRect(i * pw, 0, pw - 1, size);
+    // Veta longitudinal
+    ctx.strokeStyle = shade(base, tone * 0.82);
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 5; k++) {
+      const x = i * pw + 3 + Math.random() * (pw - 6);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      for (let y = 0; y <= size; y += 10) ctx.lineTo(x + Math.sin(y * 0.06 + k) * 1.6, y);
+      ctx.stroke();
+    }
+    // Junta oscura entre tablones
+    ctx.fillStyle = shade(base, 0.5);
+    ctx.fillRect(i * pw + pw - 2, 0, 2, size);
+  }
+  // Clavos
+  ctx.fillStyle = shade(base, 0.42);
+  for (let i = 0; i < planks; i++) {
+    for (const y of [6, size - 8]) {
+      ctx.beginPath();
+      ctx.arc(i * pw + pw * 0.5, y, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const tex = finish(c, { repeat: 1 });
+  cache.set(key, tex);
+  return tex;
+}
+
 /** Metal con paneles y remaches, para la fábrica y la torre. */
 export function panelTexture(base: number, accent: number): THREE.CanvasTexture {
   const key = `panel${base}_${accent}`;

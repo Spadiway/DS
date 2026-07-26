@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import type { LevelSpec, PetColor } from '../content/worlds';
 import { createCelMaterial, createLiquidMaterial, createTerrainMaterial } from './celMaterial';
 import { createPropMesh, randomTint, type PropInstance, type RoleColors } from './props';
-import { groundDetailTexture } from './textures';
+import { groundDetailTexture, plankTexture } from './textures';
 import { CollisionWorld, type BoxCollider, type Heightfield } from './physics';
 import { clamp, fbm, makeRng, rngInt, rngPick, rngRange, scatterPoints, terrace, type Rng } from './mathx';
 import { qualityPreset } from '../core/settings';
@@ -431,8 +431,15 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
 
   // ── Plataformas ──
   const movingPlatforms: MovingPlatform[] = [];
-  const platMat = createCelMaterial({ color: spec.palette.prop, bands: 3 });
-  const platTopMat = createCelMaterial({ color: spec.palette.propAlt, bands: 3 });
+  // Las plataformas son tarima construida, no losas lisas: tablones arriba,
+  // canto oscuro y postes de apoyo colgando.
+  const platMat = createCelMaterial({ color: spec.palette.cliff, bands: 3 });
+  const platTopMat = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: plankTexture(spec.palette.propAlt),
+    mapRepeat: 1,
+  });
   const platMovingMat = createCelMaterial({
     color: spec.palette.propAlt,
     bands: 3,
@@ -468,13 +475,29 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     m.receiveShadow = true;
     group.add(m);
 
-    // Franja superior de otro tono: marca dónde se puede aterrizar
+    // Tarima superior: marca dónde se puede aterrizar
     const cap = new THREE.Mesh(platGeo, isMoving ? platMovingMat : platTopMat);
-    cap.scale.set(w * 1.04, th * 0.28, d * 1.04);
-    cap.position.set(p.x, y + th * 0.42, p.z);
+    cap.scale.set(w * 1.06, th * 0.34, d * 1.06);
+    cap.position.set(p.x, y + th * 0.44, p.z);
     cap.receiveShadow = true;
     group.add(cap);
     if (isMoving) movingCaps.push(cap);
+
+    // Postes de apoyo bajo las esquinas: dan lectura de estructura construida
+    if (!isMoving) {
+      for (const [ox, oz] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ]) {
+        const post = new THREE.Mesh(platGeo, platMat);
+        post.scale.set(0.34, 1.5, 0.34);
+        post.position.set(p.x + ox * (w / 2 - 0.4), y - 0.9, p.z + oz * (d / 2 - 0.4));
+        post.castShadow = true;
+        group.add(post);
+      }
+    }
 
     const box = world.addBox(
       new THREE.Vector3(p.x, y, p.z),
@@ -568,6 +591,130 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     group.add(im);
     materials.push(im.material as THREE.Material);
     disposables.push(im.geometry);
+  }
+
+  // ── Mobiliario de escenario ─────────────────────────────────────────────
+  // Se coloca siguiendo el camino, no al azar: vallas que lo bordean, farolas
+  // a intervalos, escaleras donde la cuesta es fuerte y casetas junto a la
+  // ruta. Es lo que convierte un terreno generado en un lugar habitado.
+  {
+    const roles = roleColorsFor(spec);
+    const fences: PropInstance[] = [];
+    const lamps: PropInstance[] = [];
+    const stairs: PropInstance[] = [];
+    const huts: PropInstance[] = [];
+    const signs: PropInstance[] = [];
+    const barrels: PropInstance[] = [];
+
+    const interior = !!spec.interior;
+    let sinceLamp = 0;
+
+    for (let i = 2; i < path.length - 2; i++) {
+      const a = path[i];
+      const b = path[i + 1];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const segLen = Math.hypot(dx, dz);
+      if (segLen < 0.01) continue;
+      const dirX = dx / segLen;
+      const dirZ = dz / segLen;
+      const angle = Math.atan2(dirX, dirZ);
+      const groundH = world.terrainHeight(a.x, a.z);
+      if (groundH < spec.liquid.level + 0.6) continue;
+
+      // Pendiente del tramo: si es fuerte, escalera de troncos
+      const nextH = world.terrainHeight(b.x, b.z);
+      const slope = Math.abs(nextH - groundH) / segLen;
+      if (slope > 0.34 && stairs.length < 5 && i % 3 === 0) {
+        const lowFirst = nextH > groundH;
+        stairs.push({
+          x: (a.x + b.x) / 2,
+          y: Math.min(groundH, nextH) - 0.2,
+          z: (a.z + b.z) / 2,
+          scale: 1,
+          rotY: angle + (lowFirst ? Math.PI : 0),
+          tint: 1,
+        });
+        continue;
+      }
+
+      // Vallas a ambos lados, con huecos para poder salir del camino
+      if (i % 2 === 0 && rng() < 0.62 && !interior) {
+        for (const side of [-1, 1]) {
+          if (rng() < 0.22) continue; // hueco
+          const ox = -dirZ * side * 5.6;
+          const oz = dirX * side * 5.6;
+          const fx = a.x + ox;
+          const fz = a.z + oz;
+          const fh = world.terrainHeight(fx, fz);
+          if (fh < spec.liquid.level + 0.4) continue;
+          fences.push({ x: fx, y: fh - 0.1, z: fz, scale: rngRange(rng, 0.95, 1.1), rotY: angle, tint: randomTint(rng) });
+        }
+      }
+
+      sinceLamp++;
+      if (sinceLamp >= 7) {
+        sinceLamp = 0;
+        const side = rng() < 0.5 ? -1 : 1;
+        const lx = a.x - dirZ * side * 4.6;
+        const lz = a.z + dirX * side * 4.6;
+        const lh = world.terrainHeight(lx, lz);
+        if (lh > spec.liquid.level + 0.4) {
+          lamps.push({ x: lx, y: lh - 0.1, z: lz, scale: rngRange(rng, 0.95, 1.15), rotY: rng() * 6.28, tint: 1 });
+        }
+      }
+    }
+
+    // Casetas y carteles junto al camino, sobre terreno llano
+    for (let k = 0; k < 5; k++) {
+      const i = 3 + Math.floor(rng() * Math.max(1, path.length - 6));
+      const node = path[i];
+      const side = rng() < 0.5 ? -1 : 1;
+      const off = rngRange(rng, 9, 15);
+      const hx = node.x + side * off;
+      const hz = node.z + rngRange(rng, -6, 6);
+      const hh = world.terrainHeight(hx, hz);
+      if (hh < spec.liquid.level + 1.2) continue;
+      const n = world.terrainNormal(hx, hz);
+      if (n.y < 0.9) continue;
+      const facing = Math.atan2(node.x - hx, node.z - hz);
+      if (k < 3) {
+        huts.push({ x: hx, y: hh - 0.15, z: hz, scale: rngRange(rng, 0.85, 1.15), rotY: facing, tint: randomTint(rng) });
+        // Un par de barriles junto a cada caseta
+        for (let b = 0; b < 2; b++) {
+          barrels.push({
+            x: hx + rngRange(rng, -2.6, 2.6),
+            y: hh - 0.1,
+            z: hz + rngRange(rng, -2.6, 2.6),
+            scale: rngRange(rng, 0.8, 1.05),
+            rotY: rng() * 6.28,
+            tint: randomTint(rng),
+          });
+        }
+      } else {
+        signs.push({ x: hx, y: hh - 0.1, z: hz, scale: 1, rotY: facing, tint: 1 });
+      }
+    }
+
+    const furniture: [string, PropInstance[], number][] = [
+      ['fence', fences, 0],
+      ['logStair', stairs, 0],
+      ['hut', huts, 0],
+      ['signpost', signs, 0],
+      ['barrel', barrels, 0],
+      ['lampPost', lamps, 0.7],
+    ];
+    for (const [kind, list, emissive] of furniture) {
+      if (list.length === 0) continue;
+      const im = createPropMesh(kind as never, list, roles, {
+        emissive,
+        fadeNear: 4.2,
+        castShadow: q.shadows,
+      });
+      group.add(im);
+      materials.push(im.material as THREE.Material);
+      disposables.push(im.geometry);
+    }
   }
 
   // ── Obstáculos que requieren artefactos ──
@@ -775,8 +922,6 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     for (const m of materials) m.dispose();
   };
 
-  void path;
-
   return {
     spec,
     group,
@@ -808,6 +953,9 @@ function roleColorsFor(spec: LevelSpec): RoleColors {
     accent: p.propAlt,
     glow: p.propAlt,
     bone: 0xe8e0cc,
+    // Madera pintada del mobiliario: clara y algo teñida por la paleta
+    painted: mixHex(0xf2ece0, p.ground, 0.18),
+    roof: mixHex(p.propAlt, 0xb04a3a, 0.45),
   };
 }
 
