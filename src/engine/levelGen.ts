@@ -433,7 +433,23 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   if (spec.liquid.kind !== 'none' && spec.liquid.kind !== 'void') {
     const emissive = spec.liquid.kind === 'lava' ? 0.9 : spec.liquid.kind === 'acid' || spec.liquid.kind === 'slime' ? 0.55 : 0.12;
     const opacity = spec.liquid.kind === 'water' ? 0.72 : 0.9;
-    const lmat = createLiquidMaterial(spec.palette.liquid, emissive, opacity, spec.liquid.kind === 'water');
+    // Veta superficial: espuma blanca en agua, costra oscura en lava, película
+    // turbia en ácido y limo.
+    const foamColor =
+      spec.liquid.kind === 'lava'
+        ? 0x2a0e08
+        : spec.liquid.kind === 'acid' || spec.liquid.kind === 'slime'
+          ? 0xd8ff8a
+          : 0xffffff;
+    const foamStrength = spec.liquid.kind === 'lava' ? 0.6 : spec.liquid.kind === 'water' ? 0.17 : 0.3;
+    const lmat = createLiquidMaterial(
+      spec.palette.liquid,
+      emissive,
+      opacity,
+      spec.liquid.kind === 'water',
+      foamColor,
+      foamStrength,
+    );
     const geo = new THREE.PlaneGeometry(spec.size * 1.6, spec.size * 1.6, 40, 40);
     liquidMesh = new THREE.Mesh(geo, lmat);
     liquidMesh.rotation.x = -Math.PI / 2;
@@ -729,7 +745,17 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     const huts: PropInstance[] = [];
     const signs: PropInstance[] = [];
     const barrels: PropInstance[] = [];
+    const arches: PropInstance[] = [];
 
+    /**
+     * Perfil de mobiliario por mundo. Una valla blanca de jardín y una caseta
+     * con tejado quedaban fuera de lugar en la fortaleza de Deedee o en el
+     * reino alterado, así que los mundos tecnológicos y alienígenas reciben
+     * arcos y farolas en vez de mobiliario doméstico.
+     */
+    const rustic = spec.worldId <= 5;
+    const urban = spec.worldId === 6;
+    const alien = spec.worldId >= 7;
     const interior = !!spec.interior;
     let sinceLamp = 0;
 
@@ -763,7 +789,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       }
 
       // Vallas a ambos lados, con huecos para poder salir del camino
-      if (i % 2 === 0 && rng() < 0.62 && !interior) {
+      if (i % 2 === 0 && rng() < 0.62 && !interior && !alien) {
         for (const side of [-1, 1]) {
           if (rng() < 0.22) continue; // hueco
           const ox = -dirZ * side * 5.6;
@@ -777,7 +803,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       }
 
       sinceLamp++;
-      if (sinceLamp >= 7) {
+      if (sinceLamp >= (alien ? 5 : 7)) {
         sinceLamp = 0;
         const side = rng() < 0.5 ? -1 : 1;
         const lx = a.x - dirZ * side * 4.6;
@@ -802,7 +828,12 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       const n = world.terrainNormal(hx, hz);
       if (n.y < 0.9) continue;
       const facing = Math.atan2(node.x - hx, node.z - hz);
-      if (k < 3) {
+      if (alien) {
+        // Arcos monumentales: marcan accesos sin sugerir vida doméstica
+        arches.push({ x: hx, y: hh - 0.15, z: hz, scale: rngRange(rng, 1, 1.4), rotY: facing, tint: randomTint(rng) });
+        continue;
+      }
+      if (k < (urban ? 2 : 3)) {
         const hutScale = rngRange(rng, 0.85, 1.15);
         huts.push({ x: hx, y: hh - 0.15, z: hz, scale: hutScale, rotY: facing, tint: randomTint(rng) });
         cameraBlockers.push({ x: hx, z: hz, r: 2.2 * hutScale, top: hh + 2.8 * hutScale });
@@ -824,10 +855,11 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
 
     const furniture: [string, PropInstance[], number][] = [
       ['fence', fences, 0],
-      ['logStair', stairs, 0],
+      ['logStair', rustic || urban ? stairs : [], 0],
       ['hut', huts, 0],
       ['signpost', signs, 0],
-      ['barrel', barrels, 0],
+      ['barrel', rustic ? barrels : [], 0],
+      ['archway', arches, 0.5],
       ['lampPost', lamps, 0.7],
     ];
     for (const [kind, list, emissive] of furniture) {

@@ -178,6 +178,12 @@ export function createLiquidMaterial(
   opacity: number,
   /** Las cáusticas solo tienen sentido en agua; en lava o ácido dan un damero. */
   withCaustics = true,
+  /**
+   * Color de la veta superficial. En agua es espuma blanca; en lava debe ser
+   * costra oscura, que es como se lee una colada. Con blanco parecía nieve.
+   */
+  foam: number = 0xffffff,
+  foamStrength = 0.28,
 ): THREE.MeshToonMaterial {
   const mat = createCelMaterial({
     color,
@@ -193,6 +199,8 @@ export function createLiquidMaterial(
     shader.uniforms.uTime = { value: 0 };
     shader.uniforms.uCaustics = { value: causticsTexture() };
     shader.uniforms.uCausticAmount = { value: withCaustics ? 1.5 : 0 };
+    shader.uniforms.uFoam = { value: new THREE.Color(foam) };
+    shader.uniforms.uFoamStrength = { value: foamStrength };
     mat.userData.shader = shader;
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -214,6 +222,8 @@ export function createLiquidMaterial(
          uniform float uTime;
          uniform sampler2D uCaustics;
          uniform float uCausticAmount;
+         uniform vec3 uFoam;
+         uniform float uFoamStrength;
          varying vec3 vWorld;`,
       )
       .replace(
@@ -221,7 +231,12 @@ export function createLiquidMaterial(
         `#include <dithering_fragment>
          // Espuma en bandas: agua de dibujos, no reflejo realista
          float ripple = sin(vWorld.x * 0.5 + uTime * 2.0) * cos(vWorld.z * 0.42 - uTime * 1.6);
-         gl_FragColor.rgb += vec3(0.28) * smoothstep(0.6, 0.95, ripple);
+         float vein = smoothstep(0.7, 0.99, ripple);
+         // Se mezcla en vez de sumar: así la costra de lava oscurece de verdad
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, uFoam, vein * uFoamStrength);
+         // Segunda veta más fina y lenta, para que la superficie no sea uniforme
+         float slow = sin(vWorld.x * 0.17 - uTime * 0.5) * cos(vWorld.z * 0.21 + uTime * 0.42);
+         gl_FragColor.rgb = mix(gl_FragColor.rgb, uFoam, smoothstep(0.82, 1.0, slow) * uFoamStrength * 0.6);
 
          // Cáusticas: dos capas de red luminosa a distinta deriva, la marca de
          // agua de los juegos de esta época.
