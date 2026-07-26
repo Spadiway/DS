@@ -320,6 +320,55 @@ function buildTerrainMesh(
   const c = new THREE.Color();
   const tmp = new THREE.Color();
 
+  /**
+   * Oclusión horneada en el color de vértice.
+   *
+   * Es la técnica de la época: sin shadow mapping, el relieve se leía porque
+   * el artista —o el compilador de iluminación— dejaba escritas en los
+   * vértices las hondonadas oscuras y las crestas claras. Aquí se aproxima
+   * comparando la altura de cada vértice con la media de su entorno a tres
+   * radios: por encima de la media es cresta y recibe cielo; por debajo es
+   * vaguada y está resguardada.
+   *
+   * Cuesta una pasada sobre el mapa de alturas en la generación y no cuesta
+   * nada en tiempo de juego, y es lo que evita que una ladera entera se vea
+   * como una lámina de color plano.
+   */
+  const res = hf.res;
+  const cell = hf.cell;
+  const rings: number[] = [2.5, 6, 12].map((r) => Math.max(1, Math.round(r / cell)));
+  const sampleH = (row: number, col: number): number =>
+    hf.data[clamp(row, 0, res - 1) * res + clamp(col, 0, res - 1)];
+  const occlusion = (row: number, col: number): number => {
+    const h0 = sampleH(row, col);
+    let acc = 0;
+    let weight = 0;
+    for (let k = 0; k < rings.length; k++) {
+      const d = rings[k];
+      // Peso decreciente: el relieve cercano manda sobre el lejano
+      const w = 1 / (k + 1);
+      const avg =
+        (sampleH(row - d, col) +
+          sampleH(row + d, col) +
+          sampleH(row, col - d) +
+          sampleH(row, col + d) +
+          sampleH(row - d, col - d) +
+          sampleH(row + d, col + d) +
+          sampleH(row - d, col + d) +
+          sampleH(row + d, col - d)) /
+        8;
+      // Se normaliza por el radio para que una cuesta larga y suave no cuente
+      // como hondonada profunda
+      acc += clamp((h0 - avg) / (d * cell * 0.55), -1, 1) * w;
+      weight += w;
+    }
+    return acc / weight;
+  };
+  // Tinte del cielo para las crestas y del rebote para las vaguadas: un
+  // gradiente de temperatura, no solo de brillo.
+  const skyTint = new THREE.Color(pal.sky[1]).lerp(new THREE.Color(0xffffff), 0.5);
+  const hollowTint = new THREE.Color(pal.ground).lerp(new THREE.Color(0x2a2418), 0.55);
+
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
@@ -356,8 +405,13 @@ function buildTerrainMesh(
       c.lerp(pathColor.clone().multiplyScalar(wear), Math.min(1, pm * 1.15));
     }
 
+    // Oclusión horneada: crestas hacia el cielo, vaguadas hacia la sombra
+    const occ = occlusion(row, col);
+    if (occ > 0) c.lerp(skyTint, occ * 0.13);
+    else c.lerp(hollowTint, -occ * 0.3);
+
     // Variación fina de luminosidad: rompe las bandas planas
-    tmp.setScalar(0.82 + fine * 0.36);
+    tmp.setScalar(0.86 + fine * 0.28);
     c.multiply(tmp);
 
     colors[i * 3] = c.r;
@@ -627,15 +681,23 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   }
 
   // ── Decorado instanciado ──
+  //
+  // El reparto es deliberadamente desigual. Los niveles de referencia no son
+  // llanuras uniformemente salpicadas: son corredores densamente vestidos, con
+  // vegetación y construcciones al alcance de la mano y claros abiertos más
+  // allá. Repartiendo los mismos props por igual sobre una isla de 190 metros
+  // salía una mata cada noventa metros cuadrados —de ahí que todo se leyera
+  // como un descampado—, así que la densidad se concentra donde el jugador
+  // realmente camina y las piezas de cerca crecen de tamaño.
   const grassScale = q.grassDensity;
+  const CORRIDOR = 20; // metros a cada lado del camino que se consideran "cerca"
   for (const propSpec of spec.props) {
     const isGrass = propSpec.kind === 'grass';
-    // Bastante más denso que antes: el mundo se veía desierto
-    const count = Math.round(propSpec.count * (isGrass ? grassScale * 2.4 : 2.2));
+    const count = Math.round(propSpec.count * (isGrass ? grassScale * 3.2 : 3.4));
     if (count <= 0) continue;
 
     const instances: PropInstance[] = [];
-    const minDist = isGrass ? 1.3 : 2.4;
+    const minDist = isGrass ? 1.15 : 2.0;
     const pts = scatterPoints(rng, count, spec.size * 0.47, minDist, 8);
 
     for (const pt of pts) {
@@ -644,16 +706,28 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       const clump = fbm(pt.x * 0.03, pt.z * 0.03, spec.seed + propSpec.kind.length * 17, 2);
       if (!isGrass && clump < -0.15) continue;
 
+      // Proximidad al camino, 1 pegado a él y 0 a partir del corredor
+      const pd = distanceToPath(pt.x, pt.z, path);
+      const nearPath = clamp(1 - pd / CORRIDOR, 0, 1);
+      // Lejos del camino sobrevive menos de la mitad: el presupuesto de
+      // triángulos se gasta donde se ve.
+      if (rng() > 0.42 + nearPath * 0.58) continue;
+
       const h = world.terrainHeight(pt.x, pt.z);
       if (h < spec.liquid.level + 0.4 && propSpec.kind !== 'coral') continue;
       const n = world.terrainNormal(pt.x, pt.z);
       if (n.y < 0.75 && propSpec.kind !== 'rock') continue;
 
-      const near = 1 + Math.max(0, clump) * 0.16;
+      // Lo cercano se agranda: en la referencia un árbol junto a la ruta mide
+      // tres o cuatro veces el personaje y llena media pantalla.
+      const near = (1 + Math.max(0, clump) * 0.16) * (1 + nearPath * 0.34);
       const scl = rngRange(rng, propSpec.scale[0], propSpec.scale[1]) * near;
       // Los props altos y opacos entran en la lista que consulta la cámara
       if (TALL_PROPS.has(propSpec.kind)) {
-        cameraBlockers.push({ x: pt.x, z: pt.z, r: 1.6 * scl, top: h + 3.4 * scl });
+        // El radio aproxima el tronco, no la copa: con la copa entera la
+        // cámara se creía tapada por árboles que en realidad pasan por encima
+        // del encuadre y se pegaba al personaje en cuanto había arbolado.
+        cameraBlockers.push({ x: pt.x, z: pt.z, r: 0.7 * scl, top: h + 3.4 * scl });
       }
       instances.push({
         x: pt.x,
@@ -878,6 +952,60 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       group.add(im);
       materials.push(im.material as THREE.Material);
       disposables.push(im.geometry);
+    }
+
+    /**
+     * Orillas del camino.
+     *
+     * En los fotogramas del original la senda de tierra nunca linda a hueso
+     * con el prado: hay una franja tupida de matas y hierba alta que remata el
+     * borde y separa los dos colores. Es un detalle pequeño que hace muchísimo,
+     * porque convierte una mancha de textura en un camino de verdad.
+     */
+    const vergeKinds = spec.props
+      .map((p) => p.kind)
+      .filter((k) => k === 'bush' || k === 'fern' || k === 'grass');
+    if (vergeKinds.length > 0 && !interior) {
+      const verges = new Map<string, PropInstance[]>();
+      for (let i = 1; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 0.01) continue;
+        const dirX = dx / len;
+        const dirZ = dz / len;
+        // Varias matas por tramo y a los dos lados, con la separación variada
+        for (let s = 0; s < 7; s++) {
+          const t = rng();
+          const side = rng() < 0.5 ? -1 : 1;
+          const off = rngRange(rng, 4.6, 8.2);
+          const vx = a.x + dirX * len * t - dirZ * side * off;
+          const vz = a.z + dirZ * len * t + dirX * side * off;
+          const vh = world.terrainHeight(vx, vz);
+          if (vh < spec.liquid.level + 0.5) continue;
+          if (world.terrainNormal(vx, vz).y < 0.72) continue;
+          const kind = rngPick(rng, vergeKinds);
+          const list = verges.get(kind) ?? [];
+          list.push({
+            x: vx,
+            y: vh - 0.12,
+            z: vz,
+            scale: rngRange(rng, 0.85, 1.5),
+            rotY: rng() * Math.PI * 2,
+            tint: randomTint(rng),
+          });
+          verges.set(kind, list);
+        }
+      }
+      for (const [kind, list] of verges) {
+        if (list.length === 0) continue;
+        const im = createPropMesh(kind as never, list, roles, { fadeNear: 0, castShadow: false });
+        group.add(im);
+        materials.push(im.material as THREE.Material);
+        disposables.push(im.geometry);
+      }
     }
   }
 

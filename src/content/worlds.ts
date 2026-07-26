@@ -90,18 +90,144 @@ export type LevelSpec = {
   tutorial?: string[];
 };
 
-const pal = (p: Partial<ThemePalette> & Pick<ThemePalette, 'sky' | 'ground' | 'liquid'>): ThemePalette => ({
-  fog: p.fog ?? p.sky[0],
-  fogDensity: p.fogDensity ?? 0.006,
-  groundAlt: p.groundAlt ?? p.ground,
-  cliff: p.cliff ?? 0x6b5a48,
-  prop: p.prop ?? 0x3f8a3a,
-  propAlt: p.propAlt ?? 0x2f6b2c,
-  ambient: p.ambient ?? 0x8899bb,
-  sun: p.sun ?? 0xfff2d0,
-  sunIntensity: p.sunIntensity ?? 1.5,
-  ...p,
-});
+// ───────────────────── Gradación de color de la época ─────────────────────
+//
+// Los fotogramas del juego original medidos superficie a superficie dan unas
+// cifras muy concretas, y muy distintas de lo que salía aquí:
+//
+//   arena  #fce489  L=226  S=0.45      camino de tierra #b96b17  L=117  S=0.87
+//   madera #915523  L= 94  S=0.76      mar cercano      #61d8f8  L=193  S=0.61
+//   ladrillo #a27750 L=125 S=0.50      colina lejana    #9e8470  L=136  S=0.29
+//
+// Y sobre el fotograma completo: diferencia R-B de +53 a +78, es decir una
+// dominante cálida fortísima, con el 66 % de los píxeles saturados en el
+// sector naranja. Aquí la diferencia R-B era de +2 a +8 (neutro) y el 45 %
+// de los píxeles caían en verde. De ahí que se leyera apagado y sin alma:
+// no era falta de detalle, era falta de temperatura y de saturación.
+//
+// En vez de reescribir a mano veinte paletas se gradúan todas en un punto,
+// que además deja el ajuste en una sola perilla.
+
+type Hsl = { h: number; s: number; l: number };
+
+function toHsl(hex: number): Hsl {
+  const r = ((hex >> 16) & 255) / 255;
+  const g = ((hex >> 8) & 255) / 255;
+  const b = (hex & 255) / 255;
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const l = (mx + mn) / 2;
+  const d = mx - mn;
+  if (d === 0) return { h: 0, s: 0, l };
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  let h: number;
+  if (mx === r) h = ((g - b) / d) % 6;
+  else if (mx === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60;
+  if (h < 0) h += 360;
+  return { h, s, l };
+}
+
+function fromHsl({ h, s, l }: Hsl): number {
+  h = ((h % 360) + 360) % 360;
+  s = Math.max(0, Math.min(1, s));
+  l = Math.max(0, Math.min(1, l));
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let rgb: [number, number, number];
+  if (h < 60) rgb = [c, x, 0];
+  else if (h < 120) rgb = [x, c, 0];
+  else if (h < 180) rgb = [0, c, x];
+  else if (h < 240) rgb = [0, x, c];
+  else if (h < 300) rgb = [x, 0, c];
+  else rgb = [c, 0, x];
+  return (
+    (Math.round((rgb[0] + m) * 255) << 16) |
+    (Math.round((rgb[1] + m) * 255) << 8) |
+    Math.round((rgb[2] + m) * 255)
+  );
+}
+
+/** Distancia angular con signo de `h` a `to`, en grados (-180..180). */
+function hueDelta(h: number, to: number): number {
+  let d = to - h;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+
+/**
+ * Empuja un color hacia el sector cálido y sube su saturación y su valor.
+ *
+ * `warm` es cuánto se arrastra el tono hacia el naranja de referencia (35°).
+ * El arrastre se pondera por lo cerca que ya esté: un verde se vuelve verde
+ * oliva-dorado —que es exactamente la hierba del original— pero un cian de
+ * agua no se convierte en barro, porque está a 145° y apenas se mueve.
+ */
+function warmify(hex: number, warm: number, sat: number, lift: number): number {
+  const c = toHsl(hex);
+  if (c.s > 0.02) {
+    const d = hueDelta(c.h, 35);
+    // Peso: 1 en el propio naranja, cayendo a 0 en el opuesto
+    const pull = Math.pow(Math.max(0, 1 - Math.abs(d) / 180), 1.6);
+    c.h += d * warm * pull;
+    // La saturación se lleva hacia arriba de forma asintótica: nunca satura
+    // a tope, pero un 0.3 sube mucho más que un 0.8
+    c.s = c.s + (1 - c.s) * sat;
+  }
+  // Y el valor se levanta hacia el rango alto en el que vive todo el original
+  c.l = c.l + (1 - c.l) * lift;
+  return fromHsl(c);
+}
+
+/** Sube el brillo sin tocar el tono: para cielos y nieblas. */
+function lighten(hex: number, amount: number): number {
+  const c = toHsl(hex);
+  c.l = c.l + (1 - c.l) * amount;
+  return fromHsl(c);
+}
+
+const pal = (p: Partial<ThemePalette> & Pick<ThemePalette, 'sky' | 'ground' | 'liquid'>): ThemePalette => {
+  const raw: ThemePalette = {
+    fog: p.fog ?? p.sky[0],
+    fogDensity: p.fogDensity ?? 0.006,
+    groundAlt: p.groundAlt ?? p.ground,
+    cliff: p.cliff ?? 0x6b5a48,
+    prop: p.prop ?? 0x3f8a3a,
+    propAlt: p.propAlt ?? 0x2f6b2c,
+    ambient: p.ambient ?? 0xffd9a8,
+    sun: p.sun ?? 0xffeec4,
+    sunIntensity: p.sunIntensity ?? 1.5,
+    ...p,
+  };
+  return {
+    ...raw,
+    // El suelo es lo que más superficie de pantalla ocupa: es donde más se
+    // nota la temperatura, así que es donde más se empuja.
+    ground: warmify(raw.ground, 0.3, 0.34, 0.16),
+    groundAlt: warmify(raw.groundAlt, 0.34, 0.36, 0.14),
+    cliff: warmify(raw.cliff, 0.38, 0.34, 0.18),
+    prop: warmify(raw.prop, 0.18, 0.28, 0.1),
+    propAlt: warmify(raw.propAlt, 0.18, 0.3, 0.12),
+    // El agua conserva su tono pero se vuelve el cian brillante de la
+    // referencia (#61d8f8): saturada y clara, nada de charca gris.
+    liquid: warmify(raw.liquid, 0.0, 0.34, 0.16),
+    // Cielo: cenit saturado y horizonte solo un poco más claro. El blanqueo
+    // del horizonte lo pone la banda de calima de la cúpula, que es fina; si
+    // además se aclara la paleta, el cielo entero se convierte en un muro
+    // blanco y desaparece el azul.
+    sky: [lighten(raw.sky[0], 0.16), warmify(raw.sky[1], 0.0, 0.3, 0.04)] as [number, number],
+    // La niebla es la perspectiva aérea. Conserva el tono del horizonte en vez
+    // de irse al gris: en el original la lejanía de una aldea es tostada y la
+    // de una playa es celeste, nunca gris. Un gris de niebla es justamente lo
+    // que apaga un mundo entero.
+    fog: lighten(raw.fog, 0.22),
+    ambient: warmify(raw.ambient, 0.42, 0.2, 0.24),
+    sun: lighten(raw.sun, 0.18),
+  };
+};
 
 // ───────────────────────── MUNDO 1 · LA TIERRA PERDIDA ─────────────────────────
 

@@ -20,9 +20,18 @@ THREE.ColorManagement.enabled = true;
 function makeGradientMap(steps: number): THREE.DataTexture {
   const data = new Uint8Array(steps * 4);
   for (let i = 0; i < steps; i++) {
-    // Suelo de sombra alto: la cara oscura sigue siendo legible, como en el
-    // cel shading de dibujos animados (nunca cae a negro).
-    const v = 0.42 + (i / (steps - 1)) * 0.58;
+    /**
+     * Rampa muy plana y muy alta a propósito.
+     *
+     * En la PSP la iluminación iba horneada en las texturas y en los colores
+     * de vértice: no había un término difuso que apagase la cara en sombra,
+     * de modo que un objeto se leía casi igual de claro por delante que por
+     * detrás y el volumen lo daba el dibujo de la textura. Midiendo los
+     * fotogramas del original, la cara oscura de una pared ronda el 70 % del
+     * valor de la cara iluminada; aquí caía al 42 % y todo parecía tomado al
+     * atardecer.
+     */
+    const v = 0.7 + (i / (steps - 1)) * 0.3;
     const c = Math.round(v * 255);
     data[i * 4] = c;
     data[i * 4 + 1] = c;
@@ -162,9 +171,12 @@ export function createTerrainMaterial(opts: {
          vec3 detailC = texture2D( map, vMapUv * 3.1211 ).rgb;
          // Media ponderada: la escala grande manda, la fina solo añade grano
          vec3 detail = detailA * 0.5 + detailB * 0.34 + detailC * 0.16;
-         // Se recentra en torno a 1 para que multiplique sin oscurecer
-         detail = detail / 0.6;
-         diffuseColor.rgb *= clamp(detail, 0.55, 1.5);
+         // Se recentra en torno a 1 para que multiplique sin oscurecer. La
+         // máscara es lineal (gris medio 0.612), así que ese es el divisor.
+         detail = detail / 0.612;
+         // Margen estrecho: el detalle da grano, no manchas. Cuando podía
+         // bajar al 55 % el suelo se llenaba de lamparones de suciedad.
+         diffuseColor.rgb *= clamp(detail, 0.78, 1.24);
        #endif`,
     );
   };
@@ -379,18 +391,33 @@ export function createSkyDome(zenith: number, horizon: number, radius = 520): TH
         h = mix(h, b, 0.45);
         vec3 col = mix(uBottom, uTop, pow(clamp(h, 0.0, 1.0), 0.32));
 
-        // Dos capas de cúmulos a distinta velocidad y escala: da profundidad
-        // al cielo sin geometría, como los fondos pintados de la época.
-        float band1 = clamp((vUv.y - 0.10) / 0.4, 0.0, 1.0);
-        float band2 = clamp((vUv.y - 0.24) / 0.46, 0.0, 1.0);
-        float a1 = texture2D(uClouds, vec2(vUv.x * 2.0 + uTime * 0.004, band1)).a;
-        float a2 = texture2D(uClouds, vec2(vUv.x * 1.15 - uTime * 0.0022 + 0.37, band2)).a;
+        /**
+         * Dos capas de cúmulos a distinta velocidad y escala. La capa lejana
+         * se pega al horizonte y la cercana ocupa media bóveda: en el juego
+         * de referencia el cielo es sobre todo nube, no azul liso, y esa masa
+         * blanca es la mitad de la sensación de aire libre.
+         */
+        // Las bandas van muy pegadas al horizonte: la cámara mira casi
+        // horizontal y solo entran en cuadro los quince primeros grados de
+        // cielo. Con las nubes repartidas por toda la bóveda no se veía una.
+        float band1 = clamp((vUv.y - 0.008) / 0.085, 0.0, 1.0);
+        float band2 = clamp((vUv.y - 0.02) / 0.26, 0.0, 1.0);
+        vec4 c1 = texture2D(uClouds, vec2(vUv.x * 1.6 + uTime * 0.0035, band1));
+        vec4 c2 = texture2D(uClouds, vec2(vUv.x * 0.85 - uTime * 0.0018 + 0.37, band2));
 
-        // Se desvanecen contra el horizonte y hacia el cenit
-        float fade = smoothstep(0.0, 0.22, vHeight01) * (1.0 - smoothstep(0.78, 1.0, vHeight01));
-        float clouds = clamp(a1 * 0.85 + a2 * 0.6, 0.0, 1.0) * fade;
+        // Se desvanecen justo contra el horizonte y hacia el cenit
+        float fade = smoothstep(0.0, 0.06, vHeight01 - 0.5) * (1.0 - smoothstep(0.86, 1.0, vHeight01));
+        // La capa lejana va por debajo de la cercana
+        vec3 cloudCol = mix(c1.rgb, c2.rgb, clamp(c2.a * 1.4, 0.0, 1.0));
+        float clouds = clamp(c1.a * 0.7 + c2.a, 0.0, 1.0) * fade;
+        col = mix(col, cloudCol, clouds * 0.95);
 
-        col = mix(col, vec3(0.99, 0.99, 1.0), clouds * 0.92);
+        // Banda de calima sobre el horizonte: la lámina pálida que en todos
+        // los fotogramas separa el cielo del suelo y aleja el fondo. Tiene que
+        // ser fina —dos o tres grados— porque la cámara mira casi horizontal
+        // y una banda ancha se come todo el cielo visible.
+        float haze = 1.0 - smoothstep(0.5, 0.523, vHeight01);
+        col = mix(col, mix(uBottom, vec3(1.0), 0.6), haze * 0.9);
 
         gl_FragColor = vec4(col, 1.0);
       }

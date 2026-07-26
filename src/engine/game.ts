@@ -25,7 +25,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { generateLevel, updateMovingPlatforms, type GeneratedLevel } from './levelGen';
 import { buildCoin, buildCookie, buildTimeGate } from './models';
 import { ParticleSystem } from './particles';
-import { createCameraRig, shakeCamera, updateCamera, type CameraRig } from './cameraRig';
+import { createCameraRig, shakeCamera, updateCamera, PITCH_BASE, type CameraRig } from './cameraRig';
 import {
   createPlayer,
   cycleGadget,
@@ -140,10 +140,21 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setClearColor(0x101828);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // ACES comprime los altos: sin él, los colores saturados del cel shading
-    // se queman en cuanto entra la luz directa más el brillo emisivo.
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    /**
+     * Sin mapeo de tonos, a propósito.
+     *
+     * ACES es una curva de cine: al comprimir los altos arrastra los colores
+     * vivos hacia el blanco, y eso desatura precisamente lo que aquí más
+     * importa. Comparando medidas, con ACES la saturación media del cuadro
+     * caía casi un tercio respecto a la referencia. La PSP no mapeaba tonos:
+     * el color salía lineal y se recortaba por canal, que es justamente por
+     * lo que aquellos juegos se ven tan encendidos. Un verde quemado seguía
+     * siendo verde en vez de volverse crema.
+     *
+     * La exposición se baja un poco para compensar el recorte duro.
+     */
+    this.renderer.toneMapping = THREE.LinearToneMapping;
+    this.renderer.toneMappingExposure = 0.92;
 
     this.rig = createCameraRig(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     this.player = createPlayer(q.outlines);
@@ -244,22 +255,41 @@ export class Game {
     const sunColor = new THREE.Color(spec.palette.sun);
     const ambient = new THREE.Color(spec.palette.ambient);
     this.sun.color.copy(sunColor);
-    this.hemi.color.copy(new THREE.Color(spec.palette.sky[1]));
-    this.hemi.groundColor.copy(new THREE.Color(spec.palette.ground));
     /**
-     * Presupuesto de luz. Las cuatro fuentes deben sumar en torno a 1.6 sobre
-     * una cara iluminada de frente; por encima de eso el tonemapping ya no
-     * salva los tonos claros y las superficies horizontales se queman a blanco
-     * (era lo que pasaba con las tarimas de madera vistas desde arriba).
+     * Presupuesto de luz, reconstruido a partir de las medidas del original.
+     *
+     * En los fotogramas del juego de referencia la luminancia mediana de un
+     * nivel exterior está entre 117 y 207 sobre 255, y la sombra proyectada
+     * es prácticamente inexistente: la PSP no hacía shadow mapping, así que
+     * el volumen venía de la textura y de un término hemisférico horneado.
+     * Aquí la mediana estaba en 84 y las sombras eran duras: parecía otro
+     * juego, más triste.
+     *
+     * El reparto ahora es deliberadamente "plano y alto":
+     *   · el hemisférico es la fuente principal —cielo arriba, rebote cálido
+     *     del suelo abajo—, que es el equivalente moderno del horneado;
+     *   · el sol aporta poco más que la dirección y el matiz cálido;
+     *   · la sombra proyectada queda casi como un apunte.
      */
-    this.sun.intensity = spec.palette.sunIntensity * 0.62;
-    this.hemi.intensity = 0.36;
-    this.ambient.color.copy(ambient).lerp(new THREE.Color(0xffffff), 0.3);
+    // Casi blanca: un hemisférico azul intenso a esta potencia tiñe de gris
+    // todo lo que mire hacia arriba, y la arena dorada se volvía caqui.
+    this.hemi.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xfff6e8), 0.78);
+    // El suelo devuelve luz cálida hacia arriba: es lo que tiñe de dorado las
+    // barrigas y las caras inferiores en la referencia.
+    this.hemi.groundColor
+      .copy(new THREE.Color(spec.palette.ground))
+      .lerp(new THREE.Color(0xffc880), 0.4);
+    this.sun.intensity = spec.palette.sunIntensity * 0.5;
+    this.hemi.intensity = 1.05;
+    this.ambient.color.copy(ambient).lerp(new THREE.Color(0xfff2e0), 0.35);
     // Las paletas oscuras necesitan más relleno; las claras, menos
     const groundLum = new THREE.Color(spec.palette.ground).getHSL({ h: 0, s: 0, l: 0 }).l;
-    this.ambient.intensity = clamp(0.62 - groundLum * 0.3, 0.34, 0.6);
-    this.fill.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xffffff), 0.4);
-    this.fill.intensity = 0.2;
+    this.ambient.intensity = clamp(0.78 - groundLum * 0.3, 0.5, 0.76);
+    this.fill.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xffffff), 0.55);
+    this.fill.intensity = 0.26;
+    // Casi sin sombra proyectada: el disco de contacto bajo los pies ya
+    // asienta a los personajes, y es exactamente el recurso de la época.
+    this.sun.shadow.intensity = 0.3;
     updateCelLighting(new THREE.Vector3(0.42, 0.82, 0.36), sunColor, ambient, spec.palette.sunIntensity);
     // La niebla toma el color del horizonte para que el terreno se funda con el cielo
     updateCelFog(new THREE.Color(spec.palette.fog), spec.palette.fogDensity);
@@ -278,7 +308,10 @@ export class Game {
     this.rig.yaw = level.spawnYaw;
     this.player.yaw = level.spawnYaw;
     this.player.rig.root.rotation.y = level.spawnYaw;
-    this.rig.pitch = 0.32;
+    // El encuadre de salida es el mismo que define el rig: casi horizontal,
+    // con el horizonte alto. Aquí había un 0.32 fijo que lo picaba el doble y
+    // dejaba sin efecto el ajuste del encuadre.
+    this.rig.pitch = PITCH_BASE;
     this.rig.firstPerson = false;
 
     // ── Mascotas ──

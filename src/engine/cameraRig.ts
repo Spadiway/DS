@@ -20,21 +20,38 @@ export type CameraRig = {
   fovTarget: number;
 };
 
+/**
+ * Encuadre.
+ *
+ * Midiendo los fotogramas del juego de referencia, el horizonte cae en torno
+ * al 35 % de la altura de pantalla y la cámara mira hacia abajo apenas 10°:
+ * se ve mucho cielo y el escenario se lee en profundidad, hacia delante. Aquí
+ * la cámara iba 21° picada y el horizonte quedaba al 14 %, de modo que dos
+ * tercios de la pantalla eran una explanada de suelo vacío. Ese encuadre, más
+ * que ninguna textura, es lo que hacía que los mundos parecieran desiertos.
+ *
+ * El campo de visión también baja: 58° verticales es una gran angular que
+ * empequeñece todo lo que no esté pegado a la cámara.
+ */
+export const PITCH_BASE = 0.16;
+const FOV = 52;
+const HEIGHT_BASE = 1.5;
+
 export function createCameraRig(aspect: number): CameraRig {
-  const camera = new THREE.PerspectiveCamera(58, aspect, 0.15, 900);
+  const camera = new THREE.PerspectiveCamera(FOV, aspect, 0.15, 900);
   camera.position.set(0, 8, -12);
   return {
     camera,
     yaw: 0,
-    pitch: 0.32,
-    distance: 8.2,
-    targetDistance: 8.2,
-    height: 1.85,
+    pitch: PITCH_BASE,
+    distance: 8.0,
+    targetDistance: 8.0,
+    height: HEIGHT_BASE,
     shake: 0,
     shakeTime: 0,
     firstPerson: false,
-    fovBase: 58,
-    fovTarget: 58,
+    fovBase: FOV,
+    fovTarget: FOV,
   };
 }
 
@@ -69,42 +86,48 @@ function distanceBlockedBy(
     // Se coloca justo delante del obstáculo, pero nunca encima de Benito:
     // por debajo de este mínimo el personaje llena la pantalla y se pierde el
     // contexto del escenario.
-    best = Math.max(4.6, along - b.r * 0.7);
+    best = Math.max(6, along - b.r * 0.7);
   }
   return best;
 }
 
 /**
- * Colisión de cámara contra el terreno. Se marcha por el rayo que va del
- * jugador a la cámara comprobando la altura del suelo: si el terreno sube por
- * encima del rayo, se acorta la distancia. Solo con subir la Y de la cámara no
- * basta —en una ladera pronunciada acababa enterrada dentro del talud y la
- * pantalla se llenaba de tierra.
+ * Colisión de cámara contra el terreno.
+ *
+ * Se marcha por el rayo que va del jugador a la cámara y se mira si el suelo
+ * lo corta. La respuesta es levantar la cámara, no acercarla: subir mantiene
+ * el plano general —que es lo que se busca— mientras que acortar la distancia
+ * planta la cámara en el cogote del personaje y deja la pantalla llena de
+ * hierba. Solo cuando la subida necesaria es exagerada (un talud vertical
+ * detrás) se cede y se acorta.
+ *
+ * Devuelve la distancia utilizable y el suelo más alto encontrado, para que
+ * quien llama decida cuánto elevar.
  */
-function distanceClearOfTerrain(
+function terrainClearance(
   world: CollisionWorld,
   target: THREE.Vector3,
   dirX: number,
   dirZ: number,
-  pitch: number,
-  height: number,
   maxDist: number,
 ): number {
   const steps = 10;
+  let ground = -Infinity;
   for (let i = 1; i <= steps; i++) {
     const t = (i / steps) * maxDist;
-    const px = target.x + dirX * t;
-    const pz = target.z + dirZ * t;
-    // Altura del rayo de cámara a esa distancia
-    const py = target.y + height + Math.sin(pitch) * t;
-    const ground = world.terrainHeight(px, pz);
-    if (ground + 1.1 > py) {
-      // Se retrocede al último punto libre
-      return Math.max(3.2, ((i - 1) / steps) * maxDist);
-    }
+    ground = Math.max(ground, world.terrainHeight(target.x + dirX * t, target.z + dirZ * t));
   }
-  return maxDist;
+  // Margen sobre el terreno para que la cámara no roce la hierba
+  return ground + 0.9;
 }
+
+/**
+ * Cuánto puede subir la cámara sobre su altura nominal para librar el terreno.
+ * Es un tope duro: sin él, al bajar una ladera el suelo de detrás quedaba muy
+ * por encima del jugador, la cámara lo seguía y el juego pasaba a verse en
+ * planta, que es como se veía el nivel 2-1.
+ */
+const MAX_LIFT = 2.2;
 
 export function updateCamera(
   rig: CameraRig,
@@ -134,7 +157,7 @@ export function updateCamera(
   } else {
     // Tercera persona: la distancia crece un poco al correr, como en las
     // plataformas 3D clásicas, para dar sensación de velocidad
-    rig.targetDistance = 8.2 + speedRatio * 2.4;
+    rig.targetDistance = 8.0 + speedRatio * 2.2;
 
     // Dirección desde el jugador hacia la cámara, en el plano
     const backX = -Math.sin(rig.yaw);
@@ -148,33 +171,34 @@ export function updateCamera(
       rig.targetDistance,
       target.y + rig.height,
     );
+    // Altura nominal de la cámara con la distancia que se pide
+    const nominalY = target.y + rig.height + Math.sin(rig.pitch) * rig.targetDistance;
+    const clearGround = terrainClearance(world, target, backX, backZ, rig.targetDistance);
+    // Lo que haría falta subir para librar el terreno, y lo que se permite
+    const needLift = clearGround - nominalY;
+    const overflow = Math.max(0, needLift - MAX_LIFT);
+    // Lo que no se puede salvar subiendo se salva acercándose, pero nunca por
+    // debajo de cinco metros: más cerca la espalda del gato llena la pantalla.
+    const clearTerrain = overflow > 0 ? Math.max(5, rig.targetDistance - overflow * 1.4) : rig.targetDistance;
+
     // Se entra rápido para no ver el prop, y se sale despacio para no dar tirones
-    const clearGround = distanceClearOfTerrain(
-      world,
-      target,
-      backX,
-      backZ,
-      rig.pitch,
-      rig.height,
-      rig.targetDistance,
-    );
-    const wanted = Math.min(rig.targetDistance, clear, clearGround);
+    const wanted = Math.min(rig.targetDistance, clear, clearTerrain);
     const lambda = wanted < rig.distance ? 16 : 3.2;
     rig.distance = damp(rig.distance, wanted, lambda, dt);
-    rig.fovTarget = 58 + speedRatio * 8;
+    rig.fovTarget = FOV + speedRatio * 7;
 
     // Cuanto más cerca queda la cámara, más se eleva: evita mirar de frente a
     // la espalda del personaje cuando un árbol la ha empujado hacia dentro.
-    const closeness = 1 - Math.min(1, (rig.distance - 4.6) / 4);
-    const pitch = rig.pitch + closeness * 0.22;
+    const closeness = 1 - Math.min(1, (rig.distance - 6) / 3.5);
+    const pitch = rig.pitch + closeness * 0.16;
     const cosP = Math.cos(pitch);
     desiredPos.set(
       target.x - Math.sin(rig.yaw) * rig.distance * cosP,
-      target.y + rig.height + closeness * 0.5 + Math.sin(pitch) * rig.distance,
+      target.y + rig.height + closeness * 0.5 + Math.sin(pitch) * rig.distance + clamp(needLift, 0, MAX_LIFT),
       target.z - Math.cos(rig.yaw) * rig.distance * cosP,
     );
 
-    // Colisión: si el terreno tapa la cámara, se acerca al personaje
+    // Colisión final contra el suelo justo bajo la cámara
     const groundH = world.terrainHeight(desiredPos.x, desiredPos.z) + 1.4;
     if (desiredPos.y < groundH) desiredPos.y = groundH;
 

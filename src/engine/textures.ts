@@ -20,7 +20,10 @@ function canvas(size: number): { c: HTMLCanvasElement; ctx: CanvasRenderingConte
   return { c, ctx };
 }
 
-function finish(c: HTMLCanvasElement, opts: { repeat?: number; nearest?: boolean } = {}): THREE.CanvasTexture {
+function finish(
+  c: HTMLCanvasElement,
+  opts: { repeat?: number; nearest?: boolean; linear?: boolean } = {},
+): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(opts.repeat ?? 1, opts.repeat ?? 1);
@@ -28,7 +31,14 @@ function finish(c: HTMLCanvasElement, opts: { repeat?: number; nearest?: boolean
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.anisotropy = 4;
-  tex.colorSpace = THREE.SRGBColorSpace;
+  /**
+   * `linear` marca las máscaras: imágenes que no son un color sino un factor
+   * (el detalle del terreno, las cáusticas). Declararlas como sRGB hacía que
+   * Three las convirtiera a espacio lineal antes de multiplicar, de modo que
+   * un gris medio 0.61 llegaba al shader valiendo 0.33 y el terreno entero
+   * salía un 35 % más oscuro y apagado de lo previsto.
+   */
+  tex.colorSpace = opts.linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   return tex;
 }
@@ -141,7 +151,7 @@ export function groundDetailTexture(): THREE.CanvasTexture {
   }
   ctx.putImageData(img, 0, 0);
 
-  const tex = finish(c, { repeat: 1 });
+  const tex = finish(c, { repeat: 1, linear: true });
   cache.set(key, tex);
   return tex;
 }
@@ -742,20 +752,30 @@ export function cloudTexture(): THREE.CanvasTexture {
   const key = 'clouds';
   const hit = cache.get(key);
   if (hit) return hit;
-  const w = 512;
-  const h = 128;
+  /**
+   * Cúmulos grandes, muy blancos y con la panza en sombra azulada.
+   *
+   * En el juego de referencia una sola nube ocupa un tercio del ancho del
+   * cielo y media altura de la banda: son masas enormes y rotundas, no el
+   * algodón disperso que había aquí. Se dibujan en RGB —no solo alfa— para
+   * que la cúpula pueda mezclar el color real y la base quede grisácea, que
+   * es lo que da volumen a un cúmulo sin ninguna iluminación de por medio.
+   */
+  const w = 1024;
+  const h = 256;
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d')!;
   ctx.clearRect(0, 0, w, h);
 
-  const puff = (x: number, y: number, r: number, alpha: number) => {
+  const puff = (x: number, y: number, r: number, alpha: number, tint: string) => {
     for (const ox of [0, w, -w]) {
-      const grd = ctx.createRadialGradient(x + ox, y, r * 0.25, x + ox, y, r);
+      const grd = ctx.createRadialGradient(x + ox, y - r * 0.2, r * 0.1, x + ox, y, r);
       grd.addColorStop(0, `rgba(255,255,255,${alpha})`);
-      grd.addColorStop(0.62, `rgba(255,255,255,${alpha * 0.85})`);
-      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      grd.addColorStop(0.5, `rgba(255,255,255,${alpha * 0.96})`);
+      grd.addColorStop(0.78, tint.replace('%A%', String(alpha * 0.8)));
+      grd.addColorStop(1, tint.replace('%A%', '0'));
       ctx.fillStyle = grd;
       ctx.beginPath();
       ctx.arc(x + ox, y, r, 0, Math.PI * 2);
@@ -763,21 +783,35 @@ export function cloudTexture(): THREE.CanvasTexture {
     }
   };
 
-  // Cada nube es un racimo de bolas: base plana y cúpula abultada
-  for (let i = 0; i < 13; i++) {
-    const cx = Math.random() * w;
-    const cy = h * (0.36 + Math.random() * 0.4);
-    const scale = 0.6 + Math.random() * 0.9;
-    const lobes = 4 + Math.floor(Math.random() * 4);
+  const WHITE = 'rgba(255,255,255,%A%)';
+  const SHADE = 'rgba(186,208,230,%A%)';
+
+  // Seis masas grandes repartidas por el panorama, más algún jirón suelto
+  for (let i = 0; i < 6; i++) {
+    const cx = ((i + Math.random() * 0.6) / 6) * w;
+    const cy = h * (0.46 + Math.random() * 0.22);
+    const scale = 1.5 + Math.random() * 1.1;
+    const lobes = 6 + Math.floor(Math.random() * 4);
+    // Panza: primero la sombra, para que quede debajo de los bultos claros
     for (let k = 0; k < lobes; k++) {
       const t = k / (lobes - 1) - 0.5;
-      puff(cx + t * 62 * scale, cy - Math.cos(t * Math.PI) * 13 * scale, (16 + Math.random() * 15) * scale, 0.92);
+      puff(cx + t * 150 * scale, cy + 20 * scale, 28 * scale, 0.75, SHADE);
     }
-    // Sombra suave en la base
+    // Cúpula: bultos cada vez mayores hacia el centro del racimo
     for (let k = 0; k < lobes; k++) {
       const t = k / (lobes - 1) - 0.5;
-      puff(cx + t * 58 * scale, cy + 11 * scale, 13 * scale, 0.3);
+      const bulge = Math.cos(t * Math.PI);
+      puff(
+        cx + t * 150 * scale,
+        cy - bulge * 34 * scale,
+        (24 + bulge * 26 + Math.random() * 10) * scale,
+        0.97,
+        WHITE,
+      );
     }
+  }
+  for (let i = 0; i < 10; i++) {
+    puff(Math.random() * w, h * (0.3 + Math.random() * 0.5), (14 + Math.random() * 22), 0.5, WHITE);
   }
 
   const tex = new THREE.CanvasTexture(c);
