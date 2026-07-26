@@ -21,7 +21,7 @@ export type CritterRig = {
   earR: THREE.Group;
   hand: THREE.Group;
   extras: Record<string, THREE.Object3D>;
-  materials: THREE.ShaderMaterial[];
+  materials: THREE.Material[];
   height: number;
   radius: number;
 };
@@ -87,7 +87,7 @@ export type CatOptions = {
 
 /** Constructor genérico de felino: sirve para Benito (gordo) y Silva (esbelta). */
 export function buildCat(opts: CatOptions): CritterRig {
-  const mats: THREE.ShaderMaterial[] = [];
+  const mats: THREE.Material[] = [];
   const fur = createCelMaterial({ color: opts.fur, colorAlt: opts.furAlt, bands: 3, rimPower: 2.4 });
   const belly = createCelMaterial({ color: opts.belly, bands: 3 });
   const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
@@ -301,7 +301,7 @@ export function buildSilva(withOutline = true): CritterRig {
 
 /** Deedee: chihuahua diminuto, canela, lengua permanentemente fuera, capa negra. */
 export function buildDeedee(withOutline = true): CritterRig {
-  const mats: THREE.ShaderMaterial[] = [];
+  const mats: THREE.Material[] = [];
   const fur = createCelMaterial({ color: 0xd8935a, colorAlt: 0xb06f3e, bands: 3 });
   const belly = createCelMaterial({ color: 0xf3d2a8, bands: 3 });
   const dark = createCelMaterial({ color: 0x241c22, bands: 2 });
@@ -421,7 +421,7 @@ export const PET_COLORS: Record<string, { fur: number; furAlt: number; pants: nu
 
 export type PetRig = CritterRig & {
   helmetLight: THREE.Mesh;
-  helmetMat: THREE.ShaderMaterial;
+  helmetMat: THREE.MeshToonMaterial;
 };
 
 /**
@@ -430,7 +430,7 @@ export type PetRig = CritterRig & {
  */
 export function buildPet(color: string, withOutline = true): PetRig {
   const c = PET_COLORS[color] ?? PET_COLORS.yellow;
-  const mats: THREE.ShaderMaterial[] = [];
+  const mats: THREE.Material[] = [];
   const fur = createCelMaterial({ color: c.fur, colorAlt: c.furAlt, bands: 3 });
   const pants = createCelMaterial({ color: c.pants, bands: 3, emissive: 0.12 });
   const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
@@ -740,7 +740,7 @@ export function buildGadgets(): GadgetModels {
 }
 
 /** Puerta temporal de salida del nivel. */
-export function buildTimeGate(): { group: THREE.Group; ring: THREE.Mesh; portal: THREE.Mesh; mats: THREE.ShaderMaterial[] } {
+export function buildTimeGate(): { group: THREE.Group; ring: THREE.Mesh; portal: THREE.Mesh; mats: THREE.Material[] } {
   const group = new THREE.Group();
   const frameMat = createCelMaterial({ color: 0xffd23f, bands: 3, emissive: 0.4, rim: 0xfff0a0 });
   const portalMat = createCelMaterial({

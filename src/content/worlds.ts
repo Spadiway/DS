@@ -58,6 +58,9 @@ export type LevelSpec = {
     plateau: number;
     islandFalloff: number;
     ridged?: boolean;
+    /** Altura de cada meseta; 0 desactiva el aterrazado. */
+    terraceStep?: number;
+    terraceAmount?: number;
   };
   liquid: { kind: LiquidKind; level: number; damage: number };
   palette: ThemePalette;
@@ -100,7 +103,7 @@ const W1: LevelSpec[] = [
     name: { es: 'Llanura Fósil', en: 'Fossil Plain' },
     size: 190,
     seed: 1101,
-    terrain: { amplitude: 9, frequency: 0.014, octaves: 3, plateau: 0.45, islandFalloff: 0.75 },
+    terrain: { amplitude: 15, frequency: 0.016, octaves: 4, plateau: 0.35, islandFalloff: 0.75 },
     liquid: { kind: 'water', level: -2.5, damage: 0 },
     palette: pal({
       sky: [0xffd79a, 0x7fb2e8],
@@ -138,7 +141,7 @@ const W1: LevelSpec[] = [
     name: { es: 'Ciénaga Primigenia', en: 'Primordial Marsh' },
     size: 200,
     seed: 1102,
-    terrain: { amplitude: 7, frequency: 0.02, octaves: 4, plateau: 0.3, islandFalloff: 0.7 },
+    terrain: { amplitude: 12, frequency: 0.021, octaves: 4, plateau: 0.28, islandFalloff: 0.7 },
     liquid: { kind: 'water', level: 1.2, damage: 0 },
     palette: pal({
       sky: [0xa8d9a0, 0x4e7f5e],
@@ -185,17 +188,17 @@ const W1: LevelSpec[] = [
     terrain: { amplitude: 14, frequency: 0.022, octaves: 4, plateau: 0.25, islandFalloff: 0.8, ridged: true },
     liquid: { kind: 'lava', level: -1, damage: 34 },
     palette: pal({
-      sky: [0xff8a3d, 0x4a1c2a],
-      ground: 0x6b3b2e,
-      groundAlt: 0x40241f,
-      cliff: 0x33201c,
-      prop: 0x2a1a17,
-      propAlt: 0xff6a2a,
+      sky: [0xff8a3d, 0x5e2438],
+      ground: 0xb0603c,
+      groundAlt: 0x4e4048,
+      cliff: 0x3e2c2c,
+      prop: 0x4a2a22,
+      propAlt: 0xff8a3a,
       liquid: 0xff4a12,
-      fogDensity: 0.011,
-      ambient: 0xa05a3a,
-      sun: 0xffb070,
-      sunIntensity: 1.3,
+      fogDensity: 0.009,
+      ambient: 0xd08a5a,
+      sun: 0xffc890,
+      sunIntensity: 1.5,
     }),
     props: [
       { kind: 'rock', count: 40, scale: [1, 3] },
@@ -271,7 +274,7 @@ const W2: LevelSpec[] = [
     name: { es: 'Ruinas del Eco', en: 'Echo Ruins' },
     size: 185,
     seed: 2102,
-    terrain: { amplitude: 8, frequency: 0.016, octaves: 3, plateau: 0.55, islandFalloff: 0.78 },
+    terrain: { amplitude: 13, frequency: 0.017, octaves: 4, plateau: 0.45, islandFalloff: 0.78 },
     liquid: { kind: 'water', level: -3, damage: 0 },
     palette: pal({
       sky: [0x6a5c8a, 0x1e1a2e],
@@ -365,7 +368,7 @@ const W3: LevelSpec[] = [
     name: { es: 'Playa Cangrejal', en: 'Crab Shore' },
     size: 210,
     seed: 3101,
-    terrain: { amplitude: 6, frequency: 0.012, octaves: 3, plateau: 0.6, islandFalloff: 0.62 },
+    terrain: { amplitude: 11, frequency: 0.014, octaves: 4, plateau: 0.5, islandFalloff: 0.62 },
     liquid: { kind: 'water', level: 0.5, damage: 0 },
     palette: pal({
       sky: [0x9fe0ff, 0x2f9fd8],
@@ -459,9 +462,9 @@ const W3: LevelSpec[] = [
     interior: true,
     palette: pal({
       sky: [0x8a2a3a, 0x3a0a12],
-      ground: 0xc06a72,
-      groundAlt: 0x9a4a55,
-      cliff: 0x7a2a36,
+      ground: 0xd47f86,
+      groundAlt: 0xac5a64,
+      cliff: 0x8c3743,
       prop: 0xe08a94,
       propAlt: 0xffc0c8,
       liquid: 0xaee04a,
@@ -506,7 +509,7 @@ const W4: LevelSpec[] = [
     name: { es: 'Océano Congelado', en: 'Frozen Ocean' },
     size: 205,
     seed: 4101,
-    terrain: { amplitude: 8, frequency: 0.013, octaves: 3, plateau: 0.6, islandFalloff: 0.7 },
+    terrain: { amplitude: 13, frequency: 0.015, octaves: 4, plateau: 0.5, islandFalloff: 0.7 },
     liquid: { kind: 'water', level: -1, damage: 12 },
     slippery: true,
     palette: pal({
@@ -649,7 +652,7 @@ const W5: LevelSpec[] = [
     name: { es: 'Templo Sereno', en: 'Serene Temple' },
     size: 190,
     seed: 5101,
-    terrain: { amplitude: 9, frequency: 0.015, octaves: 3, plateau: 0.55, islandFalloff: 0.75 },
+    terrain: { amplitude: 14, frequency: 0.017, octaves: 4, plateau: 0.45, islandFalloff: 0.75 },
     liquid: { kind: 'water', level: -1.5, damage: 0 },
     palette: pal({
       sky: [0xffc0a8, 0xa85a6a],
@@ -793,7 +796,7 @@ const W6: LevelSpec[] = [
     name: { es: 'Parque Urbano', en: 'City Park' },
     size: 200,
     seed: 6101,
-    terrain: { amplitude: 6, frequency: 0.014, octaves: 3, plateau: 0.65, islandFalloff: 0.7 },
+    terrain: { amplitude: 12, frequency: 0.016, octaves: 4, plateau: 0.52, islandFalloff: 0.7 },
     liquid: { kind: 'water', level: -2, damage: 0 },
     palette: pal({
       sky: [0xff9fd0, 0x3a2a6a],
@@ -841,14 +844,14 @@ const W6: LevelSpec[] = [
     name: { es: 'Fábrica de Cascos', en: 'Helmet Factory' },
     size: 180,
     seed: 6102,
-    terrain: { amplitude: 7, frequency: 0.028, octaves: 3, plateau: 0.6, islandFalloff: 0.9 },
+    terrain: { amplitude: 13, frequency: 0.028, octaves: 4, plateau: 0.5, islandFalloff: 0.9 },
     liquid: { kind: 'slime', level: -1.5, damage: 28 },
     interior: true,
     palette: pal({
       sky: [0x3a3a5a, 0x12121e],
-      ground: 0x6a6f85,
-      groundAlt: 0x414658,
-      cliff: 0x24262f,
+      ground: 0x8288a0,
+      groundAlt: 0x565c72,
+      cliff: 0x33363f,
       prop: 0x9aa0b8,
       propAlt: 0xff2a6a,
       liquid: 0xaa30ff,
@@ -990,13 +993,13 @@ const W8: LevelSpec[] = [
     name: { es: 'Fortaleza de Deedee', en: "Deedee's Fortress" },
     size: 150,
     seed: 8101,
-    terrain: { amplitude: 6, frequency: 0.03, octaves: 3, plateau: 0.7, islandFalloff: 0.95 },
+    terrain: { amplitude: 10, frequency: 0.03, octaves: 4, plateau: 0.55, islandFalloff: 0.95 },
     liquid: { kind: 'void', level: -20, damage: 100 },
     palette: pal({
       sky: [0xff2a4a, 0x0a0012],
-      ground: 0x3a3352,
-      groundAlt: 0x5e2a52,
-      cliff: 0x191529,
+      ground: 0x554d74,
+      groundAlt: 0x82396f,
+      cliff: 0x241f3a,
       prop: 0x6f5c96,
       propAlt: 0xff2a6a,
       liquid: 0x000008,

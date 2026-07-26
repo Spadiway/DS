@@ -9,16 +9,17 @@
  * los niveles son estables entre partidas aunque no haya ficheros de datos.
  */
 import * as THREE from 'three';
-import type { LevelSpec, PetColor, PropKind } from '../content/worlds';
+import type { LevelSpec, PetColor } from '../content/worlds';
 import { createCelMaterial, createLiquidMaterial, createTerrainMaterial } from './celMaterial';
-import { createPropMesh, randomTint, type PropInstance } from './props';
+import { createPropMesh, randomTint, type PropInstance, type RoleColors } from './props';
 import { CollisionWorld, type BoxCollider, type Heightfield } from './physics';
-import { fbm, makeRng, rngInt, rngPick, rngRange, scatterPoints, type Rng } from './mathx';
+import { clamp, fbm, makeRng, rngInt, rngPick, rngRange, scatterPoints, terrace, type Rng } from './mathx';
 import { qualityPreset } from '../core/settings';
 
 export type MovingPlatform = {
   box: BoxCollider;
   mesh: THREE.Object3D;
+  cap?: THREE.Object3D;
   origin: THREE.Vector3;
   axis: THREE.Vector3;
   amplitude: number;
@@ -52,7 +53,7 @@ export type GeneratedLevel = {
   bossArena: THREE.Vector3 | null;
   movingPlatforms: MovingPlatform[];
   obstacles: GateObstacle[];
-  materials: THREE.ShaderMaterial[];
+  materials: THREE.Material[];
   liquidMesh: THREE.Mesh | null;
   dispose: () => void;
 };
@@ -70,6 +71,10 @@ function buildHeightfield(spec: LevelSpec): Heightfield {
   const size = spec.size;
   const data = new Float32Array(res * res);
   const { amplitude, frequency, octaves, plateau, islandFalloff, ridged } = spec.terrain;
+  // Por defecto todos los mundos se aterrazan: da repisas y riscos con los
+  // que el sombreado y la escalada tienen algo que hacer.
+  const terraceStep = spec.terrain.terraceStep ?? Math.max(1.6, amplitude * 0.26);
+  const terraceAmount = spec.terrain.terraceAmount ?? 0.62;
   const half = size / 2;
 
   for (let z = 0; z < res; z++) {
@@ -82,6 +87,14 @@ function buildHeightfield(spec: LevelSpec): Heightfield {
       h = Math.sign(h) * Math.pow(Math.abs(h), 1 + plateau);
       h *= amplitude;
 
+      // Aterrazado antes del detalle: primero la arquitectura, luego la textura
+      h = terrace(h, terraceStep, 4.5, terraceAmount);
+
+      // Rugosidad de alta frecuencia: sin ella el terreno es una superficie
+      // pulida y el sombreado no tiene nada a lo que agarrarse.
+      h += fbm(wx * frequency * 6.5, wz * frequency * 6.5, spec.seed + 77, 3) * amplitude * 0.09;
+      h += fbm(wx * frequency * 17, wz * frequency * 17, spec.seed + 991, 2) * amplitude * 0.035;
+
       // Caída en isla: los bordes se hunden bajo el líquido, cerrando el nivel
       const d = Math.max(Math.abs(wx), Math.abs(wz)) / half;
       const falloff = 1 - Math.pow(Math.max(0, (d - islandFalloff) / (1 - islandFalloff)), 1.6);
@@ -89,9 +102,10 @@ function buildHeightfield(spec: LevelSpec): Heightfield {
 
       // Meseta de salida en el centro, siempre por encima del líquido
       const cd = Math.hypot(wx, wz);
-      if (cd < 14) {
+      if (cd < 9) {
         const plat = Math.max(1.2, spec.liquid.level + 2.6);
-        h = h * (cd / 14) * 0.4 + plat * (1 - cd / 14);
+        const k = cd / 9;
+        h = h * (0.35 + k * 0.65) + plat * (1 - k) * 0.9;
       }
 
       data[z * res + x] = h;
@@ -118,11 +132,12 @@ function buildHeightfield(spec: LevelSpec): Heightfield {
       if (h >= dryLine) dry++;
     }
   }
-  if (total > 0 && dry / total < 0.4) {
-    // Percentil 60 de la zona interior: el desnivel necesario para dejarlo seco
+  if (total > 0 && dry / total < 0.34) {
     heights.sort((a, b) => a - b);
-    const target = heights[Math.floor(heights.length * 0.4)];
-    const lift = dryLine - target;
+    const target = heights[Math.floor(heights.length * 0.34)];
+    // Se limita el desnivel: subir el terreno sin tope deja el líquido enterrado
+    // y el nivel pierde sus lagos, calas y ríos de lava.
+    const lift = Math.min(dryLine - target, amplitude * 0.55);
     if (lift > 0) {
       for (let i = 0; i < data.length; i++) data[i] += lift;
     }
@@ -131,7 +146,7 @@ function buildHeightfield(spec: LevelSpec): Heightfield {
   return { size, res, cell: size / (res - 1), data, liquidLevel: spec.liquid.level };
 }
 
-function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh; mat: THREE.ShaderMaterial } {
+function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh; mat: THREE.Material } {
   const geo = new THREE.PlaneGeometry(hf.size, hf.size, hf.res - 1, hf.res - 1);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -143,18 +158,76 @@ function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh;
   pos.needsUpdate = true;
   geo.computeVertexNormals();
 
-  const snowLine = spec.worldId === 4 ? 4 : 9999;
+  /**
+   * Color por vértice. Mezcla hierba, tierra, roca, orilla y nieve según
+   * pendiente, altura y ruido. Es donde el terreno gana lectura: pintar en el
+   * fragmento daría el mismo tono plano en toda la superficie.
+   */
+  const pal = spec.palette;
+  const grass = new THREE.Color(pal.ground);
+  const dirt = new THREE.Color(pal.groundAlt);
+  const rock = new THREE.Color(pal.cliff);
+  const snow = new THREE.Color(0xf2f7ff);
+  const shore = new THREE.Color(pal.liquid).lerp(new THREE.Color(pal.groundAlt), 0.55);
+  const snowLine = spec.worldId === 4 ? 3.5 : Infinity;
+
+  const normals = geo.attributes.normal as THREE.BufferAttribute;
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  const tmp = new THREE.Color();
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const slope = 1 - Math.abs(normals.getY(i));
+
+    // Parches irregulares de hierba y tierra a distintas escalas
+    const patch = fbm(x * 0.028, z * 0.028, spec.seed + 501, 3) * 0.5 + 0.5;
+    const mid = fbm(x * 0.085, z * 0.085, spec.seed + 313, 2) * 0.5 + 0.5;
+    const fine = fbm(x * 0.19, z * 0.19, spec.seed + 733, 2) * 0.5 + 0.5;
+    // Tres escalas de mancha: grandes praderas, calvas medianas y grano fino
+    c.copy(grass).lerp(dirt, clamp(smoothstepf(0.35, 0.7, patch) + (mid - 0.5) * 0.5, 0, 1));
+
+    // La roca aflora en las pendientes
+    c.lerp(rock, smoothstepf(0.24, 0.52, slope));
+
+    // Orilla justo por encima de la lámina de líquido
+    const overLiquid = y - spec.liquid.level;
+    if (overLiquid < 3.2) {
+      c.lerp(shore, smoothstepf(3.2, 0.2, overLiquid) * 0.85);
+    }
+
+    // Nieve en las cotas altas del mundo helado
+    if (y > snowLine) {
+      c.lerp(snow, clamp((y - snowLine) / 6, 0, 1) * (1 - smoothstepf(0.3, 0.6, slope)));
+    }
+
+    // Variación fina de luminosidad: rompe las bandas planas
+    tmp.setScalar(0.82 + fine * 0.36);
+    c.multiply(tmp);
+
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
   const mat = createTerrainMaterial({
-    ground: spec.palette.ground,
-    groundAlt: spec.palette.groundAlt,
-    cliff: spec.palette.cliff,
+    ground: pal.ground,
+    groundAlt: pal.groundAlt,
+    cliff: pal.cliff,
     bands: 4,
-    snowLine,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.castShadow = false;
   return { mesh, mat };
+}
+
+function smoothstepf(a: number, b: number, x: number): number {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 /** Busca una posición de suelo válida (fuera del líquido, con pendiente suave). */
@@ -192,7 +265,7 @@ function findGround(
 export function generateLevel(spec: LevelSpec): GeneratedLevel {
   const rng = makeRng(spec.seed);
   const group = new THREE.Group();
-  const materials: THREE.ShaderMaterial[] = [];
+  const materials: THREE.Material[] = [];
   const disposables: { dispose(): void }[] = [];
   const q = qualityPreset();
 
@@ -226,20 +299,15 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
 
   // ── Plataformas ──
   const movingPlatforms: MovingPlatform[] = [];
-  const platMat = createCelMaterial({
-    color: spec.palette.prop,
-    colorAlt: spec.palette.propAlt,
-    bands: 3,
-    blendScale: 0.4,
-  });
+  const platMat = createCelMaterial({ color: spec.palette.prop, bands: 3 });
+  const platTopMat = createCelMaterial({ color: spec.palette.propAlt, bands: 3 });
   const platMovingMat = createCelMaterial({
     color: spec.palette.propAlt,
-    colorAlt: spec.palette.prop,
     bands: 3,
-    emissive: 0.22,
-    rim: 0xffffff,
+    emissive: 0.5,
+    rim: spec.palette.propAlt,
   });
-  materials.push(platMat, platMovingMat);
+  materials.push(platMat, platTopMat, platMovingMat);
 
   // Un par de plataformas junto al inicio dan referencia vertical inmediata
   const platformPts = scatterPoints(rng, spec.platforms.count, spec.size * 0.42, 13);
@@ -250,6 +318,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   }
   const platGeo = new THREE.BoxGeometry(1, 1, 1);
   disposables.push(platGeo);
+  const movingCaps: THREE.Mesh[] = [];
 
   platformPts.forEach((p, idx) => {
     const isMoving = idx < spec.platforms.moving;
@@ -263,9 +332,17 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     const m = new THREE.Mesh(platGeo, isMoving ? platMovingMat : platMat);
     m.scale.set(w, th, d);
     m.position.set(p.x, y, p.z);
-    m.castShadow = q.shadows;
-    m.receiveShadow = q.shadows;
+    m.castShadow = true;
+    m.receiveShadow = true;
     group.add(m);
+
+    // Franja superior de otro tono: marca dónde se puede aterrizar
+    const cap = new THREE.Mesh(platGeo, isMoving ? platMovingMat : platTopMat);
+    cap.scale.set(w * 1.04, th * 0.28, d * 1.04);
+    cap.position.set(p.x, y + th * 0.42, p.z);
+    cap.receiveShadow = true;
+    group.add(cap);
+    if (isMoving) movingCaps.push(cap);
 
     const box = world.addBox(
       new THREE.Vector3(p.x, y, p.z),
@@ -280,6 +357,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       movingPlatforms.push({
         box,
         mesh: m,
+        cap: movingCaps[movingCaps.length - 1],
         origin: new THREE.Vector3(p.x, y, p.z),
         axis: vertical ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(Math.cos(rng() * 6.28), 0, Math.sin(rng() * 6.28)),
         amplitude: vertical ? rngRange(rng, 2.5, 6) : rngRange(rng, 4, 11),
@@ -302,9 +380,14 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       const m = new THREE.Mesh(platGeo, platMat);
       m.scale.set(w, 0.8, w);
       m.position.set(ox, y, oz);
-      m.castShadow = q.shadows;
-      m.receiveShadow = q.shadows;
+      m.castShadow = true;
+      m.receiveShadow = true;
       group.add(m);
+      const cap = new THREE.Mesh(platGeo, platTopMat);
+      cap.scale.set(w * 1.05, 0.22, w * 1.05);
+      cap.position.set(ox, y + 0.34, oz);
+      cap.receiveShadow = true;
+      group.add(cap);
       world.addBox(new THREE.Vector3(ox, y, oz), new THREE.Vector3(w / 2, 0.4, w / 2), 'platform');
     }
   }
@@ -312,36 +395,52 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   // ── Decorado instanciado ──
   const grassScale = q.grassDensity;
   for (const propSpec of spec.props) {
-    const count = Math.round(propSpec.count * (propSpec.kind === 'grass' ? grassScale : 1));
+    const isGrass = propSpec.kind === 'grass';
+    // Bastante más denso que antes: el mundo se veía desierto
+    const count = Math.round(propSpec.count * (isGrass ? grassScale * 2.4 : 2.2));
     if (count <= 0) continue;
+
     const instances: PropInstance[] = [];
-    const pts = scatterPoints(rng, count, spec.size * 0.47, propSpec.kind === 'grass' ? 1.6 : 3.2, 8);
-    for (const p of pts) {
-      const h = world.terrainHeight(p.x, p.z);
+    const minDist = isGrass ? 1.3 : 2.4;
+    const pts = scatterPoints(rng, count, spec.size * 0.47, minDist, 8);
+
+    for (const pt of pts) {
+      // Agrupar en macizos: la dispersión uniforme parece césped artificial,
+      // los grupos crean claros y espesuras que dan carácter al terreno.
+      const clump = fbm(pt.x * 0.03, pt.z * 0.03, spec.seed + propSpec.kind.length * 17, 2);
+      if (!isGrass && clump < -0.15) continue;
+
+      const h = world.terrainHeight(pt.x, pt.z);
       if (h < spec.liquid.level + 0.4 && propSpec.kind !== 'coral') continue;
-      const n = world.terrainNormal(p.x, p.z);
+      const n = world.terrainNormal(pt.x, pt.z);
       if (n.y < 0.75 && propSpec.kind !== 'rock') continue;
+
+      const near = 1 + Math.max(0, clump) * 0.16;
       instances.push({
-        x: p.x,
+        x: pt.x,
         y: h - 0.15,
-        z: p.z,
-        scale: rngRange(rng, propSpec.scale[0], propSpec.scale[1]),
+        z: pt.z,
+        scale: rngRange(rng, propSpec.scale[0], propSpec.scale[1]) * near,
         rotY: rng() * Math.PI * 2,
         tint: randomTint(rng),
       });
     }
     if (instances.length === 0) continue;
-    const color = propColorFor(propSpec.kind, spec);
-    const im = createPropMesh(propSpec.kind, instances, color.main, color.alt, color.blend);
-    im.castShadow = q.shadows && propSpec.kind !== 'grass';
+
+    const glowKind = propSpec.kind === 'crystal' || propSpec.kind === 'neonSign' || propSpec.kind === 'lantern';
+    const im = createPropMesh(propSpec.kind, instances, roleColorsFor(spec), {
+      emissive: glowKind ? 0.32 : propSpec.kind === 'mushroom' || propSpec.kind === 'coral' ? 0.16 : 0,
+      fadeNear: isGrass ? 0 : 4.2,
+      castShadow: q.shadows && !isGrass,
+    });
     group.add(im);
-    materials.push(im.material as THREE.ShaderMaterial);
+    materials.push(im.material as THREE.Material);
     disposables.push(im.geometry);
   }
 
   // ── Obstáculos que requieren artefactos ──
   const obstacles: GateObstacle[] = [];
-  const obstacleMats: Record<string, THREE.ShaderMaterial> = {
+  const obstacleMats: Record<string, THREE.Material> = {
     punchWall: createCelMaterial({ color: 0xb8e8ff, colorAlt: 0x7ac0e0, bands: 3, opacity: 0.85, transparent: true, rim: 0xffffff }),
     dashGate: createCelMaterial({ color: 0x9fff40, bands: 3, emissive: 0.4, opacity: 0.55, transparent: true }),
     hoopGap: createCelMaterial({ color: 0xc080ff, bands: 3, emissive: 0.5, opacity: 0.5, transparent: true }),
@@ -563,40 +662,32 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   };
 }
 
-/**
- * Color de cada tipo de prop. `blend` mezcla por altura local: con él, los
- * árboles tienen el tronco de un color y la copa de otro pese a compartir
- * una sola malla instanciada.
- */
-function propColorFor(kind: PropKind, spec: LevelSpec): { main: number; alt: number; blend: number } {
+/** Traduce la paleta del mundo a los colores por rol que usa el decorado. */
+function roleColorsFor(spec: LevelSpec): RoleColors {
   const p = spec.palette;
-  switch (kind) {
-    case 'palm':
-    case 'pine':
-      return { main: p.prop, alt: 0x7a5334, blend: 0.5 };
-    case 'deadTree':
-      return { main: 0x6b4a30, alt: 0x4a3320, blend: 0.3 };
-    case 'rock':
-    case 'monolith':
-    case 'pillar':
-      return { main: p.cliff, alt: p.groundAlt, blend: 0 };
-    case 'crystal':
-      return { main: p.propAlt, alt: p.prop, blend: 0.35 };
-    case 'neonSign':
-      return { main: p.propAlt, alt: 0x3a3a4a, blend: 0.45 };
-    case 'lantern':
-      return { main: p.propAlt, alt: p.prop, blend: 0.4 };
-    case 'bone':
-      return { main: 0xe8e0cc, alt: 0xc0b8a0, blend: 0 };
-    case 'iceSpike':
-      return { main: 0xd8f0ff, alt: 0x9fd0e8, blend: 0.3 };
-    case 'coral':
-      return { main: p.prop, alt: p.propAlt, blend: 0.5 };
-    case 'grass':
-      return { main: p.prop, alt: p.ground, blend: 0 };
-    default:
-      return { main: p.prop, alt: p.propAlt, blend: 0 };
-  }
+  return {
+    trunk: mixHex(p.cliff, 0x7a5334, 0.55),
+    foliage: p.prop,
+    foliageDark: mixHex(p.prop, 0x0a1408, 0.32),
+    stone: p.cliff,
+    stoneDark: mixHex(p.cliff, 0x0a0a12, 0.4),
+    accent: p.propAlt,
+    glow: p.propAlt,
+    bone: 0xe8e0cc,
+  };
+}
+
+function mixHex(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 255;
+  const ag = (a >> 8) & 255;
+  const ab = a & 255;
+  const br = (b >> 16) & 255;
+  const bg = (b >> 8) & 255;
+  const bb = b & 255;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
 }
 
 /** Actualiza las plataformas móviles y su delta para arrastrar a los actores. */
@@ -609,5 +700,6 @@ export function updateMovingPlatforms(level: GeneratedLevel, time: number): void
     mp.box.delta.set(nx - mp.box.center.x, ny - mp.box.center.y, nz - mp.box.center.z);
     mp.box.center.set(nx, ny, nz);
     mp.mesh.position.set(nx, ny, nz);
+    if (mp.cap) mp.cap.position.set(nx, ny + 0.38, nz);
   }
 }

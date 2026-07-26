@@ -409,16 +409,15 @@ const targetColor = new THREE.Color();
 function setHelmetColor(pet: Pet, level: AlertLevel, colorBlind: boolean, dt: number, stunned: boolean): void {
   const palette = colorBlind ? ALERT_COLORS_CB : ALERT_COLORS;
   targetColor.setHex(stunned ? 0xffffff : palette[level]);
-  const uni = pet.rig.helmetMat.uniforms;
-  helmetColor.copy(uni.uColor.value as THREE.Color);
+  const mat = pet.rig.helmetMat;
+  helmetColor.copy(mat.color);
   helmetColor.lerp(targetColor, Math.min(1, dt * 10));
-  (uni.uColor.value as THREE.Color).copy(helmetColor);
-  (uni.uColorAlt.value as THREE.Color).copy(helmetColor);
-  (uni.uRimColor.value as THREE.Color).copy(helmetColor);
-  // Parpadeo cuando está alerta: se ve de lejos
-  const pulse = level === 2 ? 1.1 + Math.sin(performance.now() * 0.02) * 0.5 : level === 1 ? 1.0 : 0.75;
-  uni.uEmissive.value = pulse;
-  pet.rig.helmetLight.scale.setScalar(0.07 * (1 + (level === 2 ? 0.35 : 0)));
+  mat.color.copy(helmetColor);
+  mat.emissive.copy(helmetColor);
+  // Parpadeo cuando está alerta: la luz roja debe verse desde lejos
+  const pulse = level === 2 ? 1.6 + Math.sin(performance.now() * 0.02) * 0.7 : level === 1 ? 1.3 : 0.9;
+  mat.emissiveIntensity = pulse;
+  pet.rig.helmetLight.scale.setScalar(0.07 * (1 + (level === 2 ? 0.45 : 0)));
 }
 
 /**

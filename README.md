@@ -35,6 +35,10 @@ En su lugar, **el juego genera todo en tiempo de ejecución**:
 | Efectos | Osciladores y ruido filtrado, también en `core/audio.ts` |
 | Interfaz | CSS puro |
 
+El sombreado es cel real sobre `MeshToonMaterial`: bandas duras mediante mapa de
+degradado de pocos pasos, con sombras proyectadas, niebla y luces del pipeline
+de Three, contorno por casco invertido y una pasada de bloom para el neón.
+
 Consecuencias prácticas: el repositorio no tiene carpeta de recursos, la
 compilación pesa unos 900 kB (≈250 kB comprimidos), no hay descargas al
 arrancar y un nivel se genera en **20–45 ms**.
@@ -207,13 +211,30 @@ React nunca toca la escena 3D y el motor nunca importa React: se comunican por
 el bus de `core/events.ts`. El motor publica el estado del HUD diez veces por
 segundo en vez de en cada fotograma, para no re-renderizar React a 60 Hz.
 
+### Aspecto visual
+
+- **Sombreado cel** sobre `MeshToonMaterial` con mapa de degradado: bandas duras
+  y suelo de sombra alto, para que la cara oscura siga leyéndose.
+- **Sombras** proyectadas del sol, con el mapa ceñido a un radio alrededor del
+  jugador para que salgan nítidas, más un disco de contacto bajo cada criatura
+  que la asienta en el suelo aunque esté fuera de ese radio.
+- **Terreno aterrazado**: el ruido se cuantiza en mesetas separadas por riscos,
+  lo que da una arquitectura legible en vez de una duna uniforme. El color va en
+  los vértices y mezcla hierba, tierra, roca, orilla y nieve según pendiente,
+  altura y tres escalas de ruido.
+- **Decorado** con color por rol horneado en los vértices: tronco, hoja, piedra,
+  acento y brillo, todo en una malla instanciada por tipo. Los objetos que se
+  interponen entre la cámara y Benito se disuelven con un patrón de ruido.
+- **Bloom** sobre lo emisivo (cascos en alerta, cristales, neones, portales) y
+  tonemapping ACES para que los colores saturados no se quemen.
+
 ### Rendimiento
 
-Medido sobre los 20 niveles: 65 000–195 000 triángulos y 136–800 llamadas de
-dibujo por escena, con la generación completa de un nivel entre 20 y 45 ms
-(objetivo de carga: menos de 3 s). El decorado se dibuja con `InstancedMesh`
-—un solo draw call por tipo de objeto— y las partículas comparten un único
-lote reciclado.
+Medido sobre los 20 niveles: 145 000–235 000 triángulos por escena y generación
+completa de un nivel entre 25 y 70 ms (objetivo de carga: menos de 3 s). El
+decorado se dibuja con `InstancedMesh` —un solo draw call por tipo de objeto— y
+las partículas comparten un único lote reciclado. La calidad baja desactiva
+sombras, bloom y contornos.
 
 ### Depuración
 

@@ -10,7 +10,18 @@ import { pollInput, type InputState } from '../core/input';
 import { playMusic, setMusicIntensity, sfx, stopMusic } from '../core/audio';
 import { GADGETS, type GadgetId, isGadgetId } from '../content/gadgets';
 import { getLevel, getWorld, levelPetTotal, type LevelSpec } from '../content/worlds';
-import { createSkyDome, tickCelMaterials, updateCelFog, updateCelLighting } from './celMaterial';
+import {
+  createBlobShadow,
+  createSkyDome,
+  tickCelMaterials,
+  tickSky,
+  updateCelFog,
+  updateCelLighting,
+} from './celMaterial';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { generateLevel, updateMovingPlatforms, type GeneratedLevel } from './levelGen';
 import { buildCoin, buildCookie, buildTimeGate } from './models';
 import { ParticleSystem } from './particles';
@@ -41,6 +52,7 @@ import {
 } from './pet';
 import { createBoss, hitBoss, tryCaptureBoss, updateBoss, type Boss, type BossProjectile } from './boss';
 import { clamp } from './mathx';
+import { surfaceBelow } from './physics';
 
 type Collectible = {
   mesh: THREE.Object3D;
@@ -81,6 +93,16 @@ export class Game {
 
   private sun = new THREE.DirectionalLight(0xffffff, 1.6);
   private hemi = new THREE.HemisphereLight(0x99bbff, 0x334422, 0.6);
+  private fill = new THREE.DirectionalLight(0xffffff, 0.35);
+  /**
+   * Luz ambiental por paleta. El sombreado toon solo devuelve el suelo de la
+   * banda oscura sobre la luz direccional; sin este relleno, los mundos de
+   * paleta oscura (lava, fábrica, Dimensión X) se hunden en negro.
+   */
+  private ambient = new THREE.AmbientLight(0xffffff, 0.9);
+  private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private blobs: { mesh: THREE.Mesh; follow: () => THREE.Vector3; radius: number }[] = [];
   private sky: THREE.Mesh | null = null;
   private gate: { group: THREE.Group; ring: THREE.Mesh; portal: THREE.Mesh } | null = null;
   private gateOpen = false;
@@ -117,26 +139,61 @@ export class Game {
     this.renderer.shadowMap.enabled = q.shadows;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setClearColor(0x101828);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // ACES comprime los altos: sin él, los colores saturados del cel shading
+    // se queman en cuanto entra la luz directa más el brillo emisivo.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.rig = createCameraRig(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     this.player = createPlayer(q.outlines);
     this.scene.add(this.player.rig.root);
     this.scene.add(this.particles.mesh);
 
+    // Sombra ceñida al jugador: un mapa pequeño sobre poca área da sombras
+    // nítidas donde importa, en vez de una mancha borrosa sobre todo el nivel.
     this.sun.castShadow = q.shadows;
-    this.sun.shadow.mapSize.set(1024, 1024);
+    this.sun.shadow.mapSize.set(q.quality === 'high' ? 2048 : 1024, q.quality === 'high' ? 2048 : 1024);
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 160;
+    this.sun.shadow.camera.far = 130;
+    this.sun.shadow.bias = -0.0012;
+    this.sun.shadow.normalBias = 0.035;
     const shadowCam = this.sun.shadow.camera as THREE.OrthographicCamera;
-    shadowCam.left = -45;
-    shadowCam.right = 45;
-    shadowCam.top = 45;
-    shadowCam.bottom = -45;
+    shadowCam.left = -34;
+    shadowCam.right = 34;
+    shadowCam.top = 34;
+    shadowCam.bottom = -34;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
     this.scene.add(this.hemi);
+    this.scene.add(this.ambient);
+    // Luz de relleno opuesta: evita que la cara en sombra quede plana
+    this.fill.position.set(-24, 18, -18);
+    this.scene.add(this.fill);
 
+    this.setupComposer();
     this.resize();
+  }
+
+  /** Cadena de post-proceso: solo bloom, que es lo que hace brillar el neón. */
+  private setupComposer(): void {
+    const q = qualityPreset();
+    if (!q.bloom) {
+      this.composer = null;
+      return;
+    }
+    const composer = new EffectComposer(this.renderer);
+    composer.addPass(new RenderPass(this.scene, this.rig.camera));
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      q.bloomStrength,
+      0.5,
+      0.92,
+    );
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+    this.bloom = bloom;
   }
 
   resize(): void {
@@ -146,6 +203,8 @@ export class Game {
     this.renderer.setSize(w, h, false);
     this.rig.camera.aspect = w / Math.max(1, h);
     this.rig.camera.updateProjectionMatrix();
+    this.composer?.setSize(w, h);
+    this.bloom?.setSize(w, h);
   }
 
   // ─────────────────────────── Ciclo de vida del nivel ───────────────────────────
@@ -181,6 +240,13 @@ export class Game {
     this.sun.intensity = spec.palette.sunIntensity;
     this.hemi.color.copy(new THREE.Color(spec.palette.sky[1]));
     this.hemi.groundColor.copy(new THREE.Color(spec.palette.ground));
+    this.hemi.intensity = 0.85;
+    this.ambient.color.copy(ambient).lerp(new THREE.Color(0xffffff), 0.3);
+    // Las paletas ya claras necesitan menos relleno; las oscuras, más
+    const groundLum = new THREE.Color(spec.palette.ground).getHSL({ h: 0, s: 0, l: 0 }).l;
+    this.ambient.intensity = clamp(1.15 - groundLum * 0.9, 0.5, 1.05);
+    this.fill.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xffffff), 0.4);
+    this.fill.intensity = 0.45;
     updateCelLighting(new THREE.Vector3(0.42, 0.82, 0.36), sunColor, ambient, spec.palette.sunIntensity);
     // La niebla toma el color del horizonte para que el terreno se funda con el cielo
     updateCelFog(new THREE.Color(spec.palette.fog), spec.palette.fogDensity);
@@ -195,6 +261,7 @@ export class Game {
     this.player.dead = false;
     this.player.checkpoint.copy(level.playerSpawn);
     respawnPlayer(this.player, level.playerSpawn);
+    this.addBlobShadow(() => this.player.actor.position, 0.85);
     this.rig.yaw = 0;
     this.rig.pitch = 0.32;
     this.rig.firstPerson = false;
@@ -204,12 +271,15 @@ export class Game {
       const pet = createPet(s.color, s.pos, s.patrol, q.outlines);
       this.pets.push(pet);
       this.scene.add(pet.rig.root);
+      this.addBlobShadow(() => pet.actor.position, 0.55);
     }
 
     // ── Jefe ──
     if (spec.boss && level.bossArena) {
       this.boss = createBoss(spec.boss, level.bossArena, q.outlines);
       this.scene.add(this.boss.rig.root);
+      const boss = this.boss;
+      this.addBlobShadow(() => boss.actor.position, spec.boss === 'guardian' ? 1.5 : 1.1);
       emit('bossHealth', null);
     }
 
@@ -229,6 +299,34 @@ export class Game {
     this.queueComms('comms.start', 1.5);
   }
 
+  /**
+   * Sombra de contacto bajo cada figura. El mapa de sombras solo cubre un radio
+   * alrededor del jugador; estos discos aseguran que toda criatura, esté donde
+   * esté, se lea apoyada en el suelo y no flotando.
+   */
+  private addBlobShadow(follow: () => THREE.Vector3, radius: number): void {
+    const mesh = createBlobShadow(radius);
+    this.scene.add(mesh);
+    this.blobs.push({ mesh, follow, radius });
+  }
+
+  private updateBlobShadows(): void {
+    const level = this.level;
+    if (!level) return;
+    for (const b of this.blobs) {
+      const p = b.follow();
+      const ground = surfaceBelow(level.world, p.x, p.z, p.y + 0.3);
+      const height = Math.max(0, p.y - ground);
+      // Se difumina y encoge con la altura, como una sombra real
+      const fade = Math.max(0, 1 - height / 9);
+      b.mesh.visible = fade > 0.04;
+      if (!b.mesh.visible) continue;
+      b.mesh.position.set(p.x, ground + 0.045, p.z);
+      b.mesh.scale.setScalar(b.radius * (1 + height * 0.055));
+      (b.mesh.material as THREE.MeshBasicMaterial).opacity = fade * 0.85;
+    }
+  }
+
   private addCollectible(kind: 'coin' | 'cookie', pos: THREE.Vector3): void {
     const mesh = kind === 'coin' ? buildCoin() : buildCookie();
     mesh.position.copy(pos);
@@ -237,6 +335,11 @@ export class Game {
   }
 
   unloadLevel(): void {
+    for (const b of this.blobs) {
+      this.scene.remove(b.mesh);
+      (b.mesh.material as THREE.Material).dispose();
+    }
+    this.blobs = [];
     for (const pet of this.pets) this.scene.remove(pet.rig.root);
     this.pets = [];
     if (this.boss) {
@@ -321,7 +424,8 @@ export class Game {
       this.update(dt);
     }
 
-    this.renderer.render(this.scene, this.rig.camera);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.rig.camera);
   }
 
   private update(dt: number): void {
@@ -453,11 +557,18 @@ export class Game {
 
     // ── Luz de sombra siguiendo al jugador ──
     const p = this.player.actor.position;
-    this.sun.position.set(p.x + 30, p.y + 55, p.z + 25);
+    this.sun.position.set(p.x + 26, p.y + 42, p.z + 22);
     this.sun.target.position.copy(p);
     this.sun.target.updateMatrixWorld();
+    this.fill.position.set(p.x - 26, p.y + 20, p.z - 20);
+    this.fill.target.position.copy(p);
+    this.fill.target.updateMatrixWorld();
+    this.updateBlobShadows();
 
-    if (this.sky) this.sky.position.copy(this.rig.camera.position);
+    if (this.sky) {
+      this.sky.position.copy(this.rig.camera.position);
+      tickSky(this.sky, this.elapsed);
+    }
 
     this.particles.update(dt);
 

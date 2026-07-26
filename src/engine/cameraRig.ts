@@ -21,20 +21,20 @@ export type CameraRig = {
 };
 
 export function createCameraRig(aspect: number): CameraRig {
-  const camera = new THREE.PerspectiveCamera(62, aspect, 0.15, 900);
+  const camera = new THREE.PerspectiveCamera(58, aspect, 0.15, 900);
   camera.position.set(0, 8, -12);
   return {
     camera,
     yaw: 0,
     pitch: 0.32,
-    distance: 9.5,
-    targetDistance: 9.5,
-    height: 2.1,
+    distance: 8.2,
+    targetDistance: 8.2,
+    height: 1.85,
     shake: 0,
     shakeTime: 0,
     firstPerson: false,
-    fovBase: 62,
-    fovTarget: 62,
+    fovBase: 58,
+    fovTarget: 58,
   };
 }
 
@@ -69,9 +69,9 @@ export function updateCamera(
   } else {
     // Tercera persona: la distancia crece un poco al correr, como en las
     // plataformas 3D clásicas, para dar sensación de velocidad
-    rig.targetDistance = 9.5 + speedRatio * 2.2;
+    rig.targetDistance = 8.2 + speedRatio * 2.4;
     rig.distance = damp(rig.distance, rig.targetDistance, 4, dt);
-    rig.fovTarget = 62 + speedRatio * 7;
+    rig.fovTarget = 58 + speedRatio * 8;
 
     const cosP = Math.cos(rig.pitch);
     desiredPos.set(

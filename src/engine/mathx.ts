@@ -118,3 +118,20 @@ export function scatterPoints(
   }
   return pts;
 }
+
+/**
+ * Aterrazado: convierte una altura continua en mesetas planas separadas por
+ * riscos. Es lo que da a un terreno de ruido una arquitectura legible —
+ * repisas donde plantarse y paredes que leer— en vez de una duna uniforme.
+ * `sharpness` controla lo vertical del risco; `amount`, cuánto se mezcla con
+ * el relieve original.
+ */
+export function terrace(h: number, step: number, sharpness = 4, amount = 1): number {
+  if (step <= 0 || amount <= 0) return h;
+  const t = h / step;
+  const base = Math.floor(t);
+  const frac = t - base;
+  const eased = smoothstep(clamp((frac - 0.5) * sharpness + 0.5, 0, 1));
+  const stepped = (base + eased) * step;
+  return lerp(h, stepped, amount);
+}

@@ -117,9 +117,39 @@ export function onSettingsChange(fn: (s: Settings) => void): () => void {
 }
 
 export const QUALITY_PRESETS = {
-  low: { shadows: false, pixelRatio: 0.75, drawDistance: 120, particles: 0.4, outlines: false, grassDensity: 0.25 },
-  medium: { shadows: true, pixelRatio: 1, drawDistance: 200, particles: 0.8, outlines: true, grassDensity: 0.6 },
-  high: { shadows: true, pixelRatio: 1.5, drawDistance: 320, particles: 1.3, outlines: true, grassDensity: 1 },
+  low: {
+    quality: 'low' as Quality,
+    shadows: false,
+    pixelRatio: 0.75,
+    drawDistance: 120,
+    particles: 0.4,
+    outlines: false,
+    grassDensity: 0.3,
+    bloom: false,
+    bloomStrength: 0,
+  },
+  medium: {
+    quality: 'medium' as Quality,
+    shadows: true,
+    pixelRatio: 1,
+    drawDistance: 200,
+    particles: 0.8,
+    outlines: true,
+    grassDensity: 0.7,
+    bloom: true,
+    bloomStrength: 0.28,
+  },
+  high: {
+    quality: 'high' as Quality,
+    shadows: true,
+    pixelRatio: 1.5,
+    drawDistance: 320,
+    particles: 1.3,
+    outlines: true,
+    grassDensity: 1,
+    bloom: true,
+    bloomStrength: 0.38,
+  },
 } as const;
 
 export function qualityPreset(q: Quality = current.quality) {
