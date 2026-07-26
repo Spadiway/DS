@@ -914,9 +914,9 @@ const W6: LevelSpec[] = [
     liquid: { kind: 'void', level: -26, damage: 100 },
     palette: pal({
       sky: [0xff5a9a, 0x1a0f3a],
-      ground: 0x3f4f8a,
-      groundAlt: 0x8a3f9a,
-      cliff: 0x1e2242,
+      ground: 0x5f6fb4,
+      groundAlt: 0xa85fbe,
+      cliff: 0x33395e,
       prop: 0x7a86c0,
       propAlt: 0x00ffd0,
       liquid: 0x0a0a18,

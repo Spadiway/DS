@@ -74,6 +74,38 @@ function distanceBlockedBy(
   return best;
 }
 
+/**
+ * Colisión de cámara contra el terreno. Se marcha por el rayo que va del
+ * jugador a la cámara comprobando la altura del suelo: si el terreno sube por
+ * encima del rayo, se acorta la distancia. Solo con subir la Y de la cámara no
+ * basta —en una ladera pronunciada acababa enterrada dentro del talud y la
+ * pantalla se llenaba de tierra.
+ */
+function distanceClearOfTerrain(
+  world: CollisionWorld,
+  target: THREE.Vector3,
+  dirX: number,
+  dirZ: number,
+  pitch: number,
+  height: number,
+  maxDist: number,
+): number {
+  const steps = 10;
+  for (let i = 1; i <= steps; i++) {
+    const t = (i / steps) * maxDist;
+    const px = target.x + dirX * t;
+    const pz = target.z + dirZ * t;
+    // Altura del rayo de cámara a esa distancia
+    const py = target.y + height + Math.sin(pitch) * t;
+    const ground = world.terrainHeight(px, pz);
+    if (ground + 1.1 > py) {
+      // Se retrocede al último punto libre
+      return Math.max(3.2, ((i - 1) / steps) * maxDist);
+    }
+  }
+  return maxDist;
+}
+
 export function updateCamera(
   rig: CameraRig,
   target: THREE.Vector3,
@@ -117,8 +149,18 @@ export function updateCamera(
       target.y + rig.height,
     );
     // Se entra rápido para no ver el prop, y se sale despacio para no dar tirones
-    const lambda = clear < rig.distance ? 16 : 3.2;
-    rig.distance = damp(rig.distance, Math.min(rig.targetDistance, clear), lambda, dt);
+    const clearGround = distanceClearOfTerrain(
+      world,
+      target,
+      backX,
+      backZ,
+      rig.pitch,
+      rig.height,
+      rig.targetDistance,
+    );
+    const wanted = Math.min(rig.targetDistance, clear, clearGround);
+    const lambda = wanted < rig.distance ? 16 : 3.2;
+    rig.distance = damp(rig.distance, wanted, lambda, dt);
     rig.fovTarget = 58 + speedRatio * 8;
 
     // Cuanto más cerca queda la cámara, más se eleva: evita mirar de frente a

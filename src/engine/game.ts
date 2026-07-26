@@ -157,6 +157,13 @@ export class Game {
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 130;
     this.sun.shadow.bias = -0.0012;
+    /**
+     * Sombra parcial. Por defecto la sombra proyectada anula toda la luz
+     * direccional, y en los mundos de paleta oscura eso dejaba zonas enteras
+     * en negro con el personaje invisible. Un 60 % conserva lectura y encaja
+     * mejor con el sombreado plano de dibujo animado.
+     */
+    this.sun.shadow.intensity = 0.6;
     this.sun.shadow.normalBias = 0.035;
     const shadowCam = this.sun.shadow.camera as THREE.OrthographicCamera;
     shadowCam.left = -34;
@@ -246,11 +253,11 @@ export class Game {
      * (era lo que pasaba con las tarimas de madera vistas desde arriba).
      */
     this.sun.intensity = spec.palette.sunIntensity * 0.62;
-    this.hemi.intensity = 0.3;
+    this.hemi.intensity = 0.36;
     this.ambient.color.copy(ambient).lerp(new THREE.Color(0xffffff), 0.3);
     // Las paletas oscuras necesitan más relleno; las claras, menos
     const groundLum = new THREE.Color(spec.palette.ground).getHSL({ h: 0, s: 0, l: 0 }).l;
-    this.ambient.intensity = clamp(0.5 - groundLum * 0.28, 0.22, 0.48);
+    this.ambient.intensity = clamp(0.62 - groundLum * 0.3, 0.34, 0.6);
     this.fill.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xffffff), 0.4);
     this.fill.intensity = 0.2;
     updateCelLighting(new THREE.Vector3(0.42, 0.82, 0.36), sunColor, ambient, spec.palette.sunIntensity);

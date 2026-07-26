@@ -174,12 +174,18 @@ function buildHeightfield(spec: LevelSpec, rng: Rng): { hf: Heightfield; path: {
       const falloff = 1 - Math.pow(Math.max(0, (d - islandFalloff) / (1 - islandFalloff)), 1.6);
       h = h * Math.max(0, falloff) - (1 - Math.max(0, falloff)) * amplitude * 2.2;
 
-      // Meseta de salida en el centro, siempre por encima del líquido
+      /**
+       * Explanada de salida. Antes solo se aplanaba de verdad el punto central,
+       * así que en los mapas escarpados la partida arrancaba en un barranco con
+       * la cámara pegada a un talud. Ahora hay un claro liso de radio 7 con
+       * transición suave hasta 16.
+       */
       const cd = Math.hypot(wx, wz);
-      if (cd < 9) {
+      if (cd < 16) {
         const plat = Math.max(1.2, spec.liquid.level + 2.6);
-        const k = cd / 9;
-        h = h * (0.35 + k * 0.65) + plat * (1 - k) * 0.9;
+        const raw = clamp((cd - 7) / 9, 0, 1);
+        const k = raw * raw * (3 - 2 * raw);
+        h = plat * (1 - k) + h * k;
       }
 
       data[z * res + x] = h;
