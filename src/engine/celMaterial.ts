@@ -150,7 +150,13 @@ export function createTerrainMaterial(opts: {
 }
 
 /** Líquido con oleaje: aquí sí interesa un shader propio, pero con niebla. */
-export function createLiquidMaterial(color: number, emissive: number, opacity: number): THREE.MeshToonMaterial {
+export function createLiquidMaterial(
+  color: number,
+  emissive: number,
+  opacity: number,
+  /** Las cáusticas solo tienen sentido en agua; en lava o ácido dan un damero. */
+  withCaustics = true,
+): THREE.MeshToonMaterial {
   const mat = createCelMaterial({
     color,
     bands: 3,
@@ -164,6 +170,7 @@ export function createLiquidMaterial(color: number, emissive: number, opacity: n
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
     shader.uniforms.uCaustics = { value: causticsTexture() };
+    shader.uniforms.uCausticAmount = { value: withCaustics ? 1.5 : 0 };
     mat.userData.shader = shader;
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -184,6 +191,7 @@ export function createLiquidMaterial(color: number, emissive: number, opacity: n
         `#include <common>
          uniform float uTime;
          uniform sampler2D uCaustics;
+         uniform float uCausticAmount;
          varying vec3 vWorld;`,
       )
       .replace(
@@ -199,7 +207,7 @@ export function createLiquidMaterial(color: number, emissive: number, opacity: n
          float k1 = texture2D(uCaustics, cuv + vec2(uTime * 0.021, uTime * 0.013)).r;
          float k2 = texture2D(uCaustics, cuv * 1.7 - vec2(uTime * 0.017, uTime * 0.024)).r;
          float caustic = max(0.0, (k1 + k2) - 1.05);
-         gl_FragColor.rgb += vec3(0.55, 0.75, 0.7) * caustic * 1.5;`,
+         gl_FragColor.rgb += vec3(0.55, 0.75, 0.7) * caustic * uCausticAmount;`,
       );
     // Posición de mundo para la espuma
     shader.vertexShader = shader.vertexShader

@@ -184,19 +184,19 @@ export function buildCat(opts: CatOptions): CritterRig {
   ]);
   const body = g(root, 0, 0.78 * s, 0);
   const torso = mesh(body, torsoGeo, fur, [0, 0, 0], [s * fat, s, s * fat]);
-  if (opts.withOutline) outline(torso, 0.03);
+  if (opts.withOutline) outline(torso, 0.042);
   // Pechera clara, desde la barbilla hasta la tripa
   mesh(body, GEO.sphere, belly, [0, -0.06 * s, 0.3 * s * fat], [0.27 * s * fat, 0.32 * s, 0.22 * s]);
 
   // ── Cuello y cabeza ────────────────────────────────────────────────────
   const neck = g(body, 0, 0.44 * s, 0.01 * s);
-  mesh(neck, GEO.cylinder, plain, [0, 0.03 * s, 0], [0.17 * s, 0.09 * s, 0.17 * s]);
+  mesh(neck, GEO.cylinder, plain, [0, 0.04 * s, 0], [0.19 * s, 0.11 * s, 0.19 * s]);
 
   const head = g(neck, 0, 0.16 * s, 0.02 * s);
   // Cabeza ligeramente achatada: la cara pintada se lee mejor sobre una
   // superficie ancha y poco esférica.
   const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.46 * s, 0.42 * s, 0.42 * s]);
-  if (opts.withOutline) outline(skull, 0.028);
+  if (opts.withOutline) outline(skull, 0.038);
   // Carrillos: rompen la silueta redonda y dan cara de gato
   for (const sx of [-1, 1]) {
     mesh(head, GEO.sphere, plain, [sx * 0.33 * s, -0.1 * s, 0.14 * s], [0.14 * s, 0.13 * s, 0.14 * s]);
@@ -311,18 +311,19 @@ export function buildBenito(withOutline = true): CritterRig {
     withOutline,
     stripes: true,
   });
-  // Collar de explorador con placa
+  // Collar de explorador con placa: el único acento de color fuerte del
+  // personaje, y lo que lo separa del fondo verde de los primeros mundos.
   const collar = createCelMaterial({ color: 0xd8412f, bands: 2 });
-  const tag = createCelMaterial({ color: 0xffd23f, bands: 2, emissive: 0.3 });
+  const tag = createCelMaterial({ color: 0xffd23f, bands: 2, emissive: 0.35 });
   rig.materials.push(collar, tag);
   const c = new THREE.Mesh(GEO.torus, collar);
-  c.scale.set(0.3, 0.3, 0.3);
+  c.scale.set(0.26, 0.26, 0.5);
   c.rotation.x = Math.PI / 2;
-  c.position.set(0, 0.34, 0.02);
+  c.position.set(0, 0.44, 0.02);
   rig.body.add(c);
   const t = new THREE.Mesh(GEO.sphere, tag);
-  t.scale.set(0.07, 0.07, 0.03);
-  t.position.set(0, 0.28, 0.3);
+  t.scale.set(0.085, 0.085, 0.04);
+  t.position.set(0, 0.38, 0.24);
   rig.body.add(t);
   rig.extras.collar = c;
   return rig;

@@ -42,6 +42,36 @@ const desiredPos = new THREE.Vector3();
 const lookTarget = new THREE.Vector3();
 const dir = new THREE.Vector3();
 
+/**
+ * Acerca la cámara si un prop alto se interpone entre ella y el jugador.
+ * Antes se disolvían los objetos cercanos con un tramado, que sobre las hojas
+ * de palmera se veía como un damero enorme. Es mejor mover la cámara.
+ */
+function distanceBlockedBy(
+  blockers: { x: number; z: number; r: number; top: number }[],
+  targetX: number,
+  targetZ: number,
+  dirX: number,
+  dirZ: number,
+  maxDist: number,
+  eyeY: number,
+): number {
+  let best = maxDist;
+  for (const b of blockers) {
+    if (b.top < eyeY - 0.5) continue; // demasiado bajo para tapar
+    // Proyección del centro del prop sobre el rayo cámara-jugador
+    const px = b.x - targetX;
+    const pz = b.z - targetZ;
+    const along = px * dirX + pz * dirZ;
+    if (along < 0.5 || along > best) continue;
+    const perp = Math.abs(px * dirZ - pz * dirX);
+    if (perp > b.r) continue;
+    // Se coloca la cámara justo delante del obstáculo
+    best = Math.max(2.2, along - b.r * 0.6);
+  }
+  return best;
+}
+
 export function updateCamera(
   rig: CameraRig,
   target: THREE.Vector3,
@@ -52,6 +82,7 @@ export function updateCamera(
   playerYaw: number,
   speedRatio: number,
   screenShakeEnabled: boolean,
+  blockers: { x: number; z: number; r: number; top: number }[] = [],
 ): void {
   rig.yaw -= lookX;
   rig.pitch = clamp(rig.pitch + lookY, -0.5, 1.15);
@@ -70,7 +101,22 @@ export function updateCamera(
     // Tercera persona: la distancia crece un poco al correr, como en las
     // plataformas 3D clásicas, para dar sensación de velocidad
     rig.targetDistance = 8.2 + speedRatio * 2.4;
-    rig.distance = damp(rig.distance, rig.targetDistance, 4, dt);
+
+    // Dirección desde el jugador hacia la cámara, en el plano
+    const backX = -Math.sin(rig.yaw);
+    const backZ = -Math.cos(rig.yaw);
+    const clear = distanceBlockedBy(
+      blockers,
+      target.x,
+      target.z,
+      backX,
+      backZ,
+      rig.targetDistance,
+      target.y + rig.height,
+    );
+    // Se entra rápido para no ver el prop, y se sale despacio para no dar tirones
+    const lambda = clear < rig.distance ? 16 : 3.2;
+    rig.distance = damp(rig.distance, Math.min(rig.targetDistance, clear), lambda, dt);
     rig.fovTarget = 58 + speedRatio * 8;
 
     const cosP = Math.cos(rig.pitch);

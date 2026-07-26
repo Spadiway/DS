@@ -458,6 +458,7 @@ export class Game {
       this.player.yaw,
       speedRatio,
       getSettings().screenShake,
+      level.cameraBlockers,
     );
 
     // ── Selección de artefacto ──

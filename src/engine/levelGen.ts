@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import type { LevelSpec, PetColor } from '../content/worlds';
 import { createCelMaterial, createLiquidMaterial, createTerrainMaterial } from './celMaterial';
 import { createPropMesh, randomTint, type PropInstance, type RoleColors } from './props';
-import { groundDetailTexture, plankTexture } from './textures';
+import { groundDetailTexture, plankTexture, tileTexture } from './textures';
 import { CollisionWorld, type BoxCollider, type Heightfield } from './physics';
 import { clamp, fbm, makeRng, rngInt, rngPick, rngRange, scatterPoints, terrace, type Rng } from './mathx';
 import { qualityPreset } from '../core/settings';
@@ -55,10 +55,15 @@ export type GeneratedLevel = {
   bossArena: THREE.Vector3 | null;
   movingPlatforms: MovingPlatform[];
   obstacles: GateObstacle[];
+  /** Props altos que la cámara debe esquivar (posición y radio en el plano). */
+  cameraBlockers: { x: number; z: number; r: number; top: number }[];
   materials: THREE.Material[];
   liquidMesh: THREE.Mesh | null;
   dispose: () => void;
 };
+
+/** Props lo bastante altos y opacos como para tapar al jugador. */
+const TALL_PROPS = new Set(['palm', 'pine', 'deadTree', 'pillar', 'monolith', 'neonSign', 'iceSpike', 'crystal']);
 
 const GATE_REQUIRES: Record<GateObstacle['kind'], string> = {
   punchWall: 'magicPunch',
@@ -415,7 +420,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   if (spec.liquid.kind !== 'none' && spec.liquid.kind !== 'void') {
     const emissive = spec.liquid.kind === 'lava' ? 0.9 : spec.liquid.kind === 'acid' || spec.liquid.kind === 'slime' ? 0.55 : 0.12;
     const opacity = spec.liquid.kind === 'water' ? 0.72 : 0.9;
-    const lmat = createLiquidMaterial(spec.palette.liquid, emissive, opacity);
+    const lmat = createLiquidMaterial(spec.palette.liquid, emissive, opacity, spec.liquid.kind === 'water');
     const geo = new THREE.PlaneGeometry(spec.size * 1.6, spec.size * 1.6, 40, 40);
     liquidMesh = new THREE.Mesh(geo, lmat);
     liquidMesh.rotation.x = -Math.PI / 2;
@@ -432,6 +437,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
 
   // ── Plataformas ──
   const movingPlatforms: MovingPlatform[] = [];
+  const cameraBlockers: { x: number; z: number; r: number; top: number }[] = [];
   // Las plataformas son tarima construida, no losas lisas: tablones arriba,
   // canto oscuro y postes de apoyo colgando.
   const platMat = createCelMaterial({ color: spec.palette.cliff, bands: 3 });
@@ -586,11 +592,16 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (n.y < 0.75 && propSpec.kind !== 'rock') continue;
 
       const near = 1 + Math.max(0, clump) * 0.16;
+      const scl = rngRange(rng, propSpec.scale[0], propSpec.scale[1]) * near;
+      // Los props altos y opacos entran en la lista que consulta la cámara
+      if (TALL_PROPS.has(propSpec.kind)) {
+        cameraBlockers.push({ x: pt.x, z: pt.z, r: 1.6 * scl, top: h + 3.4 * scl });
+      }
       instances.push({
         x: pt.x,
         y: h - 0.15,
         z: pt.z,
-        scale: rngRange(rng, propSpec.scale[0], propSpec.scale[1]) * near,
+        scale: scl,
         rotY: rng() * Math.PI * 2,
         tint: randomTint(rng),
       });
@@ -600,12 +611,74 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     const glowKind = propSpec.kind === 'crystal' || propSpec.kind === 'neonSign' || propSpec.kind === 'lantern';
     const im = createPropMesh(propSpec.kind, instances, roleColorsFor(spec), {
       emissive: glowKind ? 0.32 : propSpec.kind === 'mushroom' || propSpec.kind === 'coral' ? 0.16 : 0,
-      fadeNear: isGrass ? 0 : 4.2,
+      fadeNear: isGrass ? 0 : 2.2,
       castShadow: q.shadows && !isGrass,
     });
     group.add(im);
     materials.push(im.material as THREE.Material);
     disposables.push(im.geometry);
+  }
+
+  // ── Envolvente de interior ──────────────────────────────────────────────
+  // Los niveles marcados como interior estaban abiertos al cielo y se leían
+  // igual que los exteriores. Se cierran con un anillo de muros de azulejo y
+  // pilastras: el escenario pasa a ser una sala y no un descampado.
+  if (spec.interior) {
+    const wallMat = createCelMaterial({
+      color: 0xffffff,
+      bands: 3,
+      map: tileTexture(spec.palette.cliff, mixHex(spec.palette.cliff, 0x101018, 0.5)),
+      mapRepeat: 1,
+    });
+    const pilasterMat = createCelMaterial({ color: spec.palette.groundAlt, bands: 3 });
+    materials.push(wallMat, pilasterMat);
+
+    const wallGeo = new THREE.BoxGeometry(1, 1, 1);
+    disposables.push(wallGeo);
+    const ringR = spec.size * 0.44;
+    const wallH = 34;
+    const segments = 22;
+    const baseY = spec.liquid.level - 4;
+
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      const nx = Math.cos(a) * ringR;
+      const nz = Math.sin(a) * ringR;
+      const segW = (Math.PI * 2 * ringR) / segments + 2.5;
+
+      const wall = new THREE.Mesh(wallGeo, wallMat);
+      wall.scale.set(segW, wallH, 3);
+      wall.position.set(nx, baseY + wallH / 2, nz);
+      wall.rotation.y = -a + Math.PI / 2;
+      wall.receiveShadow = true;
+      wall.castShadow = false;
+      group.add(wall);
+      // La textura se repite según el tamaño real del segmento
+      world.addBox(
+        new THREE.Vector3(nx, baseY + wallH / 2, nz),
+        new THREE.Vector3(segW * 0.5, wallH * 0.5, 2.2),
+        'wall',
+      );
+
+      // Pilastra cada dos segmentos
+      if (i % 2 === 0) {
+        const pil = new THREE.Mesh(wallGeo, pilasterMat);
+        pil.scale.set(2.6, wallH, 2.6);
+        pil.position.set(nx * 0.985, baseY + wallH / 2, nz * 0.985);
+        pil.rotation.y = -a;
+        pil.castShadow = q.shadows;
+        group.add(pil);
+      }
+    }
+
+    // Techo plano y oscuro que cierra la sala por arriba
+    const ceilMat = createCelMaterial({ color: mixHex(spec.palette.cliff, 0x080810, 0.55), bands: 2 });
+    materials.push(ceilMat);
+    const ceilGeo = new THREE.CylinderGeometry(ringR + 3, ringR + 3, 1.5, segments);
+    disposables.push(ceilGeo);
+    const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+    ceiling.position.set(0, baseY + wallH - 1, 0);
+    group.add(ceiling);
   }
 
   // ── Mobiliario de escenario ─────────────────────────────────────────────
@@ -694,7 +767,9 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (n.y < 0.9) continue;
       const facing = Math.atan2(node.x - hx, node.z - hz);
       if (k < 3) {
-        huts.push({ x: hx, y: hh - 0.15, z: hz, scale: rngRange(rng, 0.85, 1.15), rotY: facing, tint: randomTint(rng) });
+        const hutScale = rngRange(rng, 0.85, 1.15);
+        huts.push({ x: hx, y: hh - 0.15, z: hz, scale: hutScale, rotY: facing, tint: randomTint(rng) });
+        cameraBlockers.push({ x: hx, z: hz, r: 2.2 * hutScale, top: hh + 2.8 * hutScale });
         // Un par de barriles junto a cada caseta
         for (let b = 0; b < 2; b++) {
           barrels.push({
@@ -723,7 +798,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (list.length === 0) continue;
       const im = createPropMesh(kind as never, list, roles, {
         emissive,
-        fadeNear: 4.2,
+        fadeNear: 2.2,
         castShadow: q.shadows,
       });
       group.add(im);
@@ -950,6 +1025,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     bossArena,
     movingPlatforms,
     obstacles,
+    cameraBlockers,
     materials,
     liquidMesh,
     dispose,

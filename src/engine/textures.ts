@@ -238,6 +238,49 @@ export function stoneTexture(base: number): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Azulejo de muro: rejilla con junta y variación de tono por pieza. Es la
+ * textura que da lectura de interior construido —salas, depósitos, túneles—
+ * frente al terreno abierto.
+ */
+export function tileTexture(base: number, grout: number): THREE.CanvasTexture {
+  const key = `tile${base}_${grout}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const size = 128;
+  const { c, ctx } = canvas(size);
+  ctx.fillStyle = hex(grout);
+  ctx.fillRect(0, 0, size, size);
+
+  const cols = 4;
+  const rows = 4;
+  const tw = size / cols;
+  const thh = size / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      // Hiladas trabadas: media pieza de desfase en filas alternas
+      const offset = r % 2 === 0 ? 0 : tw * 0.5;
+      const x = col * tw + offset;
+      const y = r * thh;
+      const tone = 0.84 + ((r * 7 + col * 5) % 6) * 0.06;
+      for (const ox of [0, -size]) {
+        ctx.fillStyle = shade(base, tone);
+        ctx.fillRect(x + ox + 1.5, y + 1.5, tw - 3, thh - 3);
+        // Bisel: luz arriba, sombra abajo
+        ctx.fillStyle = shade(base, tone * 1.16);
+        ctx.fillRect(x + ox + 1.5, y + 1.5, tw - 3, 2);
+        ctx.fillStyle = shade(base, tone * 0.72);
+        ctx.fillRect(x + ox + 1.5, y + thh - 3.5, tw - 3, 2);
+      }
+    }
+  }
+  // Manchas de humedad y desgaste
+  speckle(ctx, size, 90, [2, 7], [shade(base, 0.74), shade(base, 1.1)], 0.28);
+  const tex = finish(c, { repeat: 1 });
+  cache.set(key, tex);
+  return tex;
+}
+
 /** Tarima de tablones: para plataformas y suelos construidos. */
 export function plankTexture(base: number): THREE.CanvasTexture {
   const key = `plank${base}`;
@@ -359,11 +402,12 @@ export function furTexture(opts: FurOptions): THREE.CanvasTexture {
   // Anillos atigrados: bandas horizontales que rodean el cuerpo, más marcadas
   // en el lomo y difuminadas hacia el vientre.
   if (opts.stripes && opts.stripe !== undefined) {
-    ctx.fillStyle = shade(opts.stripe, 1);
-    for (let i = 0; i < 9; i++) {
-      const y = (i / 9) * size + 6;
-      const h = 7 + Math.random() * 7;
-      ctx.globalAlpha = 0.5;
+    ctx.fillStyle = shade(opts.stripe, 0.72);
+    for (let i = 0; i < 11; i++) {
+      const y = (i / 11) * size + 4;
+      // Anillos alternos gruesos y finos, como en un atigrado real
+      const h = (i % 2 === 0 ? 12 : 6) + Math.random() * 6;
+      ctx.globalAlpha = 0.78;
       ctx.beginPath();
       ctx.moveTo(0, y);
       for (let x = 0; x <= size; x += 12) ctx.lineTo(x, y + Math.sin(x * 0.05 + i) * 4);
@@ -373,6 +417,15 @@ export function furTexture(opts: FurOptions): THREE.CanvasTexture {
     }
     ctx.globalAlpha = 1;
   }
+
+  // Franja dorsal oscura: da lomo al animal y separa la espalda de los costados.
+  // En la esfera, u = 0.75 cae en la espalda (la cara se pinta en u = 0.5).
+  const spineGrad = ctx.createLinearGradient(size * 0.62, 0, size * 0.88, 0);
+  spineGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  spineGrad.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+  spineGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = spineGrad;
+  ctx.fillRect(size * 0.62, 0, size * 0.26, size);
 
   // Grano de pelo
   ctx.lineWidth = 1;
