@@ -34,6 +34,7 @@ En su lugar, **el juego genera todo en tiempo de ejecución**:
 | Música | Síntesis WebAudio por mundo en `core/audio.ts` |
 | Efectos | Osciladores y ruido filtrado, también en `core/audio.ts` |
 | Texturas | Dibujadas con canvas 2D en `engine/textures.ts` |
+| Caras | Pintadas en la textura de la cabeza, no modeladas |
 | Interfaz | CSS puro |
 
 El sombreado es cel real sobre `MeshToonMaterial`: bandas duras mediante mapa de
@@ -245,6 +246,14 @@ segundo en vez de en cada fotograma, para no re-renderizar React a 60 Hz.
   alineado con el frente del modelo. Cambiar de personaje es cambiar de dibujo:
   el ceño de Silva, las gafas del Profesor y la lengua fuera de Deedee son
   parámetros de la misma función.
+- **Mobiliario construido** colocado con criterio, no al azar: vallas que
+  bordean el camino con huecos para salirse, farolas a intervalos, escaleras de
+  troncos donde la cuesta aprieta, casetas orientadas hacia la ruta.
+- **Envolvente de interior**: los niveles bajo techo se cierran con un anillo de
+  muros de azulejo, pilastras y techo.
+- **La cámara esquiva los props altos**: se acerca cuando un árbol o una columna
+  se interpone, en lugar de disolverlo con un tramado.
+- **La partida abre mirando al camino**, no contra un talud.
 - **Bloom** sobre lo emisivo (cascos en alerta, cristales, neones, portales) y
   tonemapping ACES para que los colores saturados no se quemen.
 

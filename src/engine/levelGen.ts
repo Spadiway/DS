@@ -47,6 +47,8 @@ export type GeneratedLevel = {
   group: THREE.Group;
   world: CollisionWorld;
   playerSpawn: THREE.Vector3;
+  /** Orientación inicial: mira a lo largo del camino, donde está el contenido. */
+  spawnYaw: number;
   petSpawns: { color: PetColor; pos: THREE.Vector3; patrol: THREE.Vector3[] }[];
   coinSpawns: THREE.Vector3[];
   cookieSpawns: THREE.Vector3[];
@@ -445,6 +447,29 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   // ── Punto de aparición del jugador ──
   const spawnY = world.terrainHeight(0, 0);
   const playerSpawn = new THREE.Vector3(0, spawnY + 0.6, 0);
+
+  /**
+   * Orientación inicial. Antes siempre miraba a +Z, lo que en la mitad de los
+   * niveles significaba abrir contra un talud. Ahora se mira a lo largo del
+   * camino: el primer plano enseña la ruta, las vallas y las casetas.
+   */
+  let spawnYaw = 0;
+  {
+    let bestI = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < path.length; i++) {
+      const d = Math.hypot(path[i].x, path[i].z);
+      if (d < bestD) {
+        bestD = d;
+        bestI = i;
+      }
+    }
+    // Se mira hacia el extremo del camino que quede más lejos, que es el que
+    // tiene recorrido por delante
+    const aheadIdx = bestI < path.length / 2 ? path.length - 1 : 0;
+    const t = path[aheadIdx];
+    spawnYaw = Math.atan2(t.x - playerSpawn.x, t.z - playerSpawn.z);
+  }
 
   // ── Plataformas ──
   const movingPlatforms: MovingPlatform[] = [];
@@ -1028,6 +1053,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     group,
     world,
     playerSpawn,
+    spawnYaw,
     petSpawns,
     coinSpawns,
     cookieSpawns,

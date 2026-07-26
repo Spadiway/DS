@@ -268,7 +268,9 @@ export class Game {
     this.player.checkpoint.copy(level.playerSpawn);
     respawnPlayer(this.player, level.playerSpawn);
     this.addBlobShadow(() => this.player.actor.position, 0.85);
-    this.rig.yaw = 0;
+    this.rig.yaw = level.spawnYaw;
+    this.player.yaw = level.spawnYaw;
+    this.player.rig.root.rotation.y = level.spawnYaw;
     this.rig.pitch = 0.32;
     this.rig.firstPerson = false;
 
