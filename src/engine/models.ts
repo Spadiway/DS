@@ -190,9 +190,9 @@ export function buildCat(opts: CatOptions): CritterRig {
 
   // ── Cuello y cabeza ────────────────────────────────────────────────────
   const neck = g(body, 0, 0.44 * s, 0.01 * s);
-  mesh(neck, GEO.cylinder, plain, [0, 0.04 * s, 0], [0.19 * s, 0.11 * s, 0.19 * s]);
+  mesh(neck, GEO.cylinder, plain, [0, 0.06 * s, 0], [0.17 * s, 0.13 * s, 0.17 * s]);
 
-  const head = g(neck, 0, 0.16 * s, 0.02 * s);
+  const head = g(neck, 0, 0.22 * s, 0.02 * s);
   // Cabeza ligeramente achatada: la cara pintada se lee mejor sobre una
   // superficie ancha y poco esférica.
   const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.46 * s, 0.42 * s, 0.42 * s]);
@@ -216,8 +216,8 @@ export function buildCat(opts: CatOptions): CritterRig {
   // ── Brazos: hombro, codo y zarpa ───────────────────────────────────────
   // Los hombros van donde el perfil se estrecha: más afuera quedaban sueltos,
   // más adentro desaparecían dentro de la barriga.
-  const armL = g(body, -0.44 * s * fat, 0.26 * s, 0);
-  const armR = g(body, 0.44 * s * fat, 0.26 * s, 0);
+  const armL = g(body, -0.45 * s * fat, 0.24 * s, 0.06 * s);
+  const armR = g(body, 0.45 * s * fat, 0.24 * s, 0.06 * s);
   const forearms: THREE.Group[] = [];
   for (const [arm, sx] of [
     [armL, -1],
@@ -317,14 +317,14 @@ export function buildBenito(withOutline = true): CritterRig {
   const tag = createCelMaterial({ color: 0xffd23f, bands: 2, emissive: 0.35 });
   rig.materials.push(collar, tag);
   const c = new THREE.Mesh(GEO.torus, collar);
-  c.scale.set(0.26, 0.26, 0.5);
+  c.scale.set(0.24, 0.24, 0.7);
   c.rotation.x = Math.PI / 2;
-  c.position.set(0, 0.44, 0.02);
-  rig.body.add(c);
+  c.position.set(0, -0.01, 0);
+  (rig.neck ?? rig.body).add(c);
   const t = new THREE.Mesh(GEO.sphere, tag);
-  t.scale.set(0.085, 0.085, 0.04);
-  t.position.set(0, 0.38, 0.24);
-  rig.body.add(t);
+  t.scale.set(0.075, 0.09, 0.05);
+  t.position.set(0, -0.09, 0.19);
+  (rig.neck ?? rig.body).add(t);
   rig.extras.collar = c;
   return rig;
 }
@@ -551,34 +551,47 @@ export function buildPet(color: string, withOutline = true): PetRig {
   if (withOutline) outline(torso, 0.026);
   mesh(body, GEO.sphere, skin, [0, 0.02 * s, 0.2 * s], [0.15 * s, 0.17 * s, 0.1 * s]);
 
-  // Pantalones de color: la señal que identifica el tipo de mascota
-  const trousers = mesh(body, GEO.capsule, pants, [0, -0.3 * s, 0], [0.24 * s, 0.11 * s, 0.24 * s]);
-  if (withOutline) outline(trousers, 0.022);
-  mesh(body, GEO.torus, dark, [0, -0.19 * s, 0], [0.25 * s, 0.25 * s, 0.5 * s], [Math.PI / 2, 0, 0]);
+  // Pantalón corto de color: la señal que identifica el tipo de mascota, así
+  // que ocupa cadera y medio muslo en vez de una banda estrecha.
+  const trousers = mesh(body, GEO.capsule, pants, [0, -0.3 * s, 0], [0.29 * s, 0.16 * s, 0.29 * s]);
+  if (withOutline) outline(trousers, 0.024);
+  // Cinturón
+  mesh(body, GEO.torus, dark, [0, -0.17 * s, 0], [0.28 * s, 0.28 * s, 0.55 * s], [Math.PI / 2, 0, 0]);
+  mesh(body, GEO.box, lightMat, [0, -0.17 * s, 0.26 * s], [0.09 * s, 0.07 * s, 0.03 * s]);
 
   const neck = g(body, 0, 0.3 * s, 0.01 * s);
   const head = g(neck, 0, 0.14 * s, 0.01 * s);
   const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.34 * s, 0.32 * s, 0.32 * s]);
   if (withOutline) outline(skull, 0.026);
-  // Hocico: las mascotas son perrillos, necesitan morro
-  mesh(head, GEO.sphere, skin, [0, -0.1 * s, 0.28 * s], [0.13 * s, 0.1 * s, 0.1 * s]);
 
-  const earL = g(head, -0.3 * s, 0.1 * s, 0);
-  const earR = g(head, 0.3 * s, 0.1 * s, 0);
+  const earL = g(head, -0.31 * s, -0.02 * s, 0);
+  const earR = g(head, 0.31 * s, -0.02 * s, 0);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    const e = mesh(ear, GEO.sphere, plain, [0, -0.09 * s, 0], [0.1 * s, 0.2 * s, 0.07 * s], [0, 0, sx * 0.22]);
+    const e = mesh(ear, GEO.sphere, plain, [0, -0.08 * s, 0], [0.11 * s, 0.21 * s, 0.08 * s], [0, 0, sx * 0.26]);
     if (withOutline) outline(e, 0.02);
   }
 
-  const helmet = g(head, 0, 0.17 * s, 0);
-  const dome = mesh(helmet, GEO.sphere, helmetMat, [0, 0.05 * s, 0], [0.36 * s, 0.26 * s, 0.34 * s]);
+  /**
+   * Casco. La luz de estado va al FRENTE, sobre la visera, como el foco de un
+   * casco de minero: es la señal de juego más importante —dice si te han visto—
+   * y en la versión anterior estaba en la coronilla, invisible desde la cámara.
+   */
+  const helmet = g(head, 0, 0.14 * s, 0);
+  const dome = mesh(helmet, GEO.sphere, helmetMat, [0, 0.06 * s, -0.02 * s], [0.37 * s, 0.28 * s, 0.36 * s]);
   if (withOutline) outline(dome, 0.022);
-  mesh(helmet, GEO.torus, helmetMat, [0, 0, 0], [0.35 * s, 0.35 * s, 0.35 * s], [Math.PI / 2, 0, 0]);
-  const helmetLight = mesh(helmet, GEO.sphere, lightMat, [0, 0.24 * s, 0.06 * s], [0.11 * s, 0.11 * s, 0.11 * s]);
-  mesh(helmet, GEO.cylinder, helmetMat, [0, 0.17 * s, 0.04 * s], [0.022 * s, 0.14 * s, 0.022 * s]);
+  // Visera hacia delante
+  mesh(helmet, GEO.sphere, helmetMat, [0, -0.02 * s, 0.16 * s], [0.34 * s, 0.07 * s, 0.24 * s]);
+  // Banda del color del tipo de mascota: refuerza la identificación
+  mesh(helmet, GEO.torus, pants, [0, -0.02 * s, 0], [0.37 * s, 0.37 * s, 0.5 * s], [Math.PI / 2, 0, 0]);
+  // Foco frontal: soporte oscuro y lente emisiva bien visible
+  mesh(helmet, GEO.cylinder, helmetMat, [0, 0.12 * s, 0.24 * s], [0.09 * s, 0.05 * s, 0.09 * s], [Math.PI / 2, 0, 0]);
+  const helmetLight = mesh(helmet, GEO.sphere, lightMat, [0, 0.12 * s, 0.31 * s], [0.115 * s, 0.115 * s, 0.09 * s]);
+  // Antena con bombilla, que repite el color de estado por si el foco queda oculto
+  mesh(helmet, GEO.cylinder, helmetMat, [0, 0.24 * s, -0.06 * s], [0.02 * s, 0.13 * s, 0.02 * s]);
+  const beacon = mesh(helmet, GEO.sphere, lightMat, [0, 0.4 * s, -0.06 * s], [0.07 * s, 0.07 * s, 0.07 * s]);
 
   const armL = g(body, -0.28 * s, 0.14 * s, 0);
   const armR = g(body, 0.28 * s, 0.14 * s, 0);
@@ -599,7 +612,7 @@ export function buildPet(color: string, withOutline = true): PetRig {
   const legR = g(body, 0.15 * s, -0.38 * s, 0);
   const shins: THREE.Group[] = [];
   for (const leg of [legL, legR]) {
-    mesh(leg, GEO.capsule, pants, [0, -0.08 * s, 0], [0.09 * s, 0.07 * s, 0.09 * s]);
+    mesh(leg, GEO.capsule, pants, [0, -0.07 * s, 0], [0.105 * s, 0.08 * s, 0.105 * s]);
     const shin = g(leg, 0, -0.19 * s, 0);
     mesh(shin, GEO.capsule, plain, [0, -0.05 * s, 0], [0.075 * s, 0.05 * s, 0.075 * s]);
     const foot = mesh(shin, GEO.sphere, dark, [0, -0.15 * s, 0.06 * s], [0.11 * s, 0.065 * s, 0.17 * s]);
@@ -632,7 +645,7 @@ export function buildPet(color: string, withOutline = true): PetRig {
     earR,
     hand: forearms[1],
     bodyRestY: 0.72 * s,
-    extras: { helmet, dome },
+    extras: { helmet, dome, beacon },
     materials: mats,
     height: 1.2,
     radius: 0.33,

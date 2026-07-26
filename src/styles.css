@@ -291,17 +291,18 @@ h2.section {
 
 .meter {
   width: calc(210px * var(--hud-scale));
-  background: rgba(6, 10, 26, 0.72);
-  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, rgba(4, 7, 20, 0.85), rgba(12, 18, 40, 0.85));
+  border: 3px solid rgba(220, 235, 255, 0.34);
   border-radius: 999px;
   padding: 3px;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45), inset 0 2px 3px rgba(0, 0, 0, 0.6);
 }
 
 .meter .fill {
   height: calc(13px * var(--hud-scale));
   border-radius: 999px;
   transition: width 0.16s ease;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.42), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
 }
 
 .meter.health .fill {
@@ -342,8 +343,11 @@ h2.section {
   height: calc(146px * var(--hud-scale));
   border-radius: 50%;
   background: rgba(6, 12, 30, 0.72);
-  border: 3px solid rgba(64, 224, 255, 0.5);
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4), inset 0 0 24px rgba(64, 224, 255, 0.16);
+  border: 4px solid rgba(120, 200, 255, 0.6);
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 26px rgba(64, 224, 255, 0.2),
+    inset 0 3px 0 rgba(255, 255, 255, 0.18);
   position: relative;
   overflow: hidden;
 }
@@ -398,17 +402,18 @@ h2.section {
 }
 
 .pet-counter {
-  background: rgba(6, 10, 26, 0.78);
-  border: 2px solid var(--ui-gold);
-  border-radius: 12px;
-  padding: 5px 12px;
-  font-weight: 800;
-  font-size: calc(17px * var(--hud-scale));
+  background: linear-gradient(180deg, rgba(30, 44, 96, 0.92), rgba(8, 12, 30, 0.92));
+  border: 3px solid var(--ui-gold);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-weight: 900;
+  font-size: calc(19px * var(--hud-scale));
   letter-spacing: 1px;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.18);
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
 }
 
 .pet-counter small {
@@ -428,11 +433,11 @@ h2.section {
 }
 
 .gadget-slot {
-  width: calc(52px * var(--hud-scale));
-  height: calc(52px * var(--hud-scale));
-  border-radius: 13px;
-  background: rgba(6, 10, 26, 0.75);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  width: calc(54px * var(--hud-scale));
+  height: calc(54px * var(--hud-scale));
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, rgba(70, 92, 160, 0.95), rgba(6, 10, 26, 0.92));
+  border: 3px solid rgba(255, 255, 255, 0.26);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -455,8 +460,11 @@ h2.section {
 
 .gadget-slot.active {
   border-color: var(--ui-gold);
-  transform: translateY(-8px) scale(1.13);
-  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.45), 0 0 20px rgba(255, 210, 63, 0.5);
+  transform: translateY(-9px) scale(1.16);
+  box-shadow:
+    0 6px 0 rgba(0, 0, 0, 0.45),
+    0 0 24px rgba(255, 210, 63, 0.65),
+    inset 0 0 14px rgba(255, 210, 63, 0.4);
 }
 
 .level-banner {

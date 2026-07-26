@@ -110,7 +110,7 @@ export function updateAnim(rig: CritterRig, st: AnimState, input: AnimInput): vo
   // ── Brazos ──
   const armBase = input.swimming ? 1.0 : 0;
   rig.armL.rotation.x = Math.sin(w + Math.PI) * 0.7 * loco - air * 0.9 + armBase;
-  rig.armL.rotation.z = 0.16 + loco * 0.08;
+  rig.armL.rotation.z = 0.3 + loco * 0.1;
   if (rig.forearmL) {
     rig.forearmL.rotation.x = -0.25 - Math.max(0, Math.sin(w + Math.PI)) * 0.75 * loco - air * 0.4;
   }
@@ -134,7 +134,7 @@ export function updateAnim(rig: CritterRig, st: AnimState, input: AnimInput): vo
     }
   } else {
     rig.armR.rotation.x = damp(rig.armR.rotation.x, Math.sin(w) * 0.7 * loco - air * 0.9 + armBase, 12, dt);
-    rig.armR.rotation.z = damp(rig.armR.rotation.z, -0.16 - loco * 0.08, 12, dt);
+    rig.armR.rotation.z = damp(rig.armR.rotation.z, -0.3 - loco * 0.1, 12, dt);
     if (rig.forearmR) {
       rig.forearmR.rotation.x = damp(
         rig.forearmR.rotation.x,
