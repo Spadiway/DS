@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { LevelSpec, PetColor } from '../content/worlds';
 import { createCelMaterial, createLiquidMaterial, createTerrainMaterial } from './celMaterial';
 import { createPropMesh, randomTint, type PropInstance, type RoleColors } from './props';
+import { groundDetailTexture } from './textures';
 import { CollisionWorld, type BoxCollider, type Heightfield } from './physics';
 import { clamp, fbm, makeRng, rngInt, rngPick, rngRange, scatterPoints, terrace, type Rng } from './mathx';
 import { qualityPreset } from '../core/settings';
@@ -218,6 +219,10 @@ function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh;
     groundAlt: pal.groundAlt,
     cliff: pal.cliff,
     bands: 4,
+    // Textura de detalle en gris, repetida densamente y multiplicada por el
+    // color de vértice: es lo que quita al suelo el aspecto de plástico liso.
+    detail: groundDetailTexture(),
+    detailRepeat: hf.size / 5.5,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;

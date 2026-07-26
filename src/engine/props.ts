@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createCelMaterialInstanced } from './celMaterial';
+import { groundDetailTexture } from './textures';
 import type { PropKind } from '../content/worlds';
 import { type Rng, rngRange } from './mathx';
 
@@ -273,11 +274,18 @@ export function createPropMesh(
   opts: { emissive?: number; fadeNear?: number; castShadow?: boolean } = {},
 ): THREE.InstancedMesh {
   const geo = buildGeometry(BUILDERS[kind](), colors);
+  // Misma textura gris de detalle que el terreno: da grano a corteza, hoja y
+  // piedra sin necesitar una imagen distinta por tipo de objeto.
+  const detail = groundDetailTexture().clone();
+  detail.wrapS = detail.wrapT = THREE.RepeatWrapping;
+  detail.repeat.set(2.5, 2.5);
+  detail.needsUpdate = true;
   const mat = createCelMaterialInstanced({
     color: 0xffffff,
     bands: 3,
     emissive: opts.emissive ?? 0,
     vertexColors: true,
+    map: detail,
   });
 
   const fadeNear = opts.fadeNear ?? 0;

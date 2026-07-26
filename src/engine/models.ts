@@ -7,6 +7,20 @@
  */
 import * as THREE from 'three';
 import { createCelMaterial, createOutlineMaterial } from './celMaterial';
+import { clothTexture, faceTexture, furTexture, helmetTexture } from './textures';
+
+/**
+ * La cara y el vientre van pintados en la textura, así que hay que alinearlos
+ * con el frente del modelo. En la esfera de Three el eje +Z —hacia donde mira
+ * el personaje— cae en u = 0.25, mientras que la textura dibuja la cara
+ * centrada en u = 0.5: este desplazamiento las hace coincidir.
+ */
+function faceForward(tex: THREE.Texture): THREE.Texture {
+  const t = tex.clone();
+  t.offset.x = 0.25;
+  t.needsUpdate = true;
+  return t;
+}
 
 export type CritterRig = {
   root: THREE.Group;
@@ -83,18 +97,46 @@ export type CatOptions = {
   eyeSize: number;
   withOutline: boolean;
   stripes: boolean;
+  /** Intensidad del ceño pintado en la cara: 0 neutro, 1 muy enfadado. */
+  angry?: number;
+  glasses?: boolean;
 };
 
-/** Constructor genérico de felino: sirve para Benito (gordo) y Silva (esbelta). */
+/**
+ * Constructor genérico de felino: sirve para Benito (gordo) y Silva (esbelta).
+ *
+ * La cara —ojos, iris, pupila, brillo, nariz, boca, bigotes y marca atigrada—
+ * va pintada en la textura de la cabeza, no montada con esferas. Las rayas y el
+ * vientre claro también están en la textura del cuerpo. Es la forma en que se
+ * construían los personajes en las consolas portátiles de la época: poca
+ * geometría y toda la expresión en la imagen.
+ */
 export function buildCat(opts: CatOptions): CritterRig {
   const mats: THREE.Material[] = [];
-  const fur = createCelMaterial({ color: opts.fur, colorAlt: opts.furAlt, bands: 3, rimPower: 2.4 });
+
+  const furMap = faceForward(
+    furTexture({ base: opts.fur, belly: opts.belly, stripe: opts.furAlt, stripes: opts.stripes }),
+  );
+  const fur = createCelMaterial({ color: 0xffffff, bands: 3, map: furMap });
+  const plain = createCelMaterial({ color: opts.fur, bands: 3 });
   const belly = createCelMaterial({ color: opts.belly, bands: 3 });
   const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
-  const eyeWhite = createCelMaterial({ color: 0xfdfdff, bands: 2, emissive: 0.05 });
-  const iris = createCelMaterial({ color: opts.eye, bands: 2, emissive: 0.55, rim: opts.eye });
-  const nose = createCelMaterial({ color: 0xff9aa8, bands: 2 });
-  mats.push(fur, belly, dark, eyeWhite, iris, nose);
+  const faceMat = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: faceForward(
+      faceTexture({
+        fur: opts.fur,
+        belly: opts.belly,
+        eye: opts.eye,
+        kind: 'cat',
+        stripe: opts.stripes ? opts.furAlt : undefined,
+        angry: opts.angry ?? 0,
+        glasses: opts.glasses ?? false,
+      }),
+    ),
+  });
+  mats.push(fur, plain, belly, dark, faceMat);
 
   const root = new THREE.Group();
   const s = opts.scale;
@@ -103,113 +145,54 @@ export function buildCat(opts: CatOptions): CritterRig {
   const body = g(root, 0, 0.62 * s, 0);
   const torso = mesh(body, GEO.sphere, fur, [0, 0, 0], [0.5 * s * fat, 0.44 * s, 0.46 * s * fat]);
   if (opts.withOutline) outline(torso, 0.028);
-  mesh(body, GEO.sphere, belly, [0, -0.07 * s, 0.14 * s * fat], [0.34 * s * fat, 0.3 * s, 0.34 * s]);
-
-  // Rayas atigradas: en el lomo y en los costados, para que se lean también
-  // desde el ángulo de cámara habitual (tres cuartos por detrás).
-  if (opts.stripes) {
-    const stripeMat = createCelMaterial({ color: opts.furAlt, colorAlt: 0x3a3a46, bands: 2 });
-    mats.push(stripeMat);
-    for (let i = 0; i < 4; i++) {
-      mesh(
-        body,
-        GEO.box,
-        stripeMat,
-        [0, 0.18 * s - i * 0.11 * s, -0.4 * s * fat],
-        [0.36 * s * fat, 0.045 * s, 0.14 * s],
-        [0, 0, (i % 2 ? 1 : -1) * 0.14],
-      );
-    }
-    for (const sx of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        mesh(
-          body,
-          GEO.box,
-          stripeMat,
-          [sx * 0.44 * s * fat, 0.14 * s - i * 0.13 * s, -0.06 * s],
-          [0.1 * s, 0.05 * s, 0.3 * s],
-          [0, 0, sx * 0.2],
-        );
-      }
-    }
-  }
+  mesh(body, GEO.sphere, belly, [0, -0.05 * s, 0.3 * s * fat], [0.3 * s * fat, 0.3 * s, 0.26 * s]);
 
   const head = g(body, 0, 0.52 * s, 0.03 * s);
-  const skull = mesh(head, GEO.sphere, fur, [0, 0, 0], [0.42 * s, 0.4 * s, 0.4 * s]);
+  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.44 * s, 0.42 * s, 0.42 * s]);
   if (opts.withOutline) outline(skull, 0.026);
-  // Hocico
-  mesh(head, GEO.sphere, belly, [0, -0.12 * s, 0.3 * s], [0.19 * s, 0.14 * s, 0.14 * s]);
-  mesh(head, GEO.cone, nose, [0, -0.06 * s, 0.4 * s], [0.05 * s, 0.05 * s, 0.05 * s], [Math.PI / 2, 0, 0]);
 
-  // Ojos grandes y expresivos
-  const es = opts.eyeSize * s;
-  for (const sx of [-1, 1]) {
-    const eye = g(head, sx * 0.16 * s, 0.06 * s, 0.3 * s);
-    mesh(eye, GEO.sphere, eyeWhite, [0, 0, 0], [es, es * 1.1, es * 0.75]);
-    mesh(eye, GEO.sphere, iris, [0, 0, es * 0.5], [es * 0.62, es * 0.72, es * 0.5]);
-    mesh(eye, GEO.sphere, dark, [0, 0, es * 0.72], [es * 0.24, es * 0.42, es * 0.3]);
-    mesh(eye, GEO.sphere, eyeWhite, [es * 0.22, es * 0.3, es * 0.8], [es * 0.16, es * 0.16, es * 0.12]);
-  }
-
-  // Bigotes
-  for (const sx of [-1, 1]) {
-    for (let i = 0; i < 3; i++) {
-      mesh(
-        head,
-        GEO.box,
-        dark,
-        [sx * 0.24 * s, -0.08 * s + i * 0.045 * s, 0.3 * s],
-        [0.16 * s, 0.008 * s, 0.008 * s],
-        [0, 0, sx * (0.2 - i * 0.2)],
-      );
-    }
-  }
-
-  if (opts.stripes) {
-    const brow = createCelMaterial({ color: opts.furAlt, colorAlt: 0x3a3a46, bands: 2 });
-    mats.push(brow);
-    for (const sx of [-1, 0, 1]) {
-      mesh(head, GEO.box, brow, [sx * 0.1 * s, 0.3 * s, 0.16 * s], [0.045 * s, 0.2 * s, 0.16 * s], [0.35, 0, sx * 0.22]);
-    }
-  }
-
-  const earL = g(head, -0.24 * s, 0.3 * s, 0);
-  const earR = g(head, 0.24 * s, 0.3 * s, 0);
+  // Orejas: lo único de la cabeza que sí necesita silueta propia
+  const earL = g(head, -0.26 * s, 0.3 * s, 0);
+  const earR = g(head, 0.26 * s, 0.3 * s, 0);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    const e = mesh(ear, GEO.cone, fur, [0, 0.08 * s, 0], [0.14 * s, 0.24 * s, 0.1 * s], [0, 0, sx * 0.22]);
+    const e = mesh(ear, GEO.cone, plain, [0, 0.1 * s, 0], [0.15 * s, 0.26 * s, 0.11 * s], [0, 0, sx * 0.24]);
     if (opts.withOutline) outline(e, 0.022);
-    mesh(ear, GEO.cone, nose, [0, 0.07 * s, 0.03 * s], [0.08 * s, 0.16 * s, 0.05 * s], [0, 0, sx * 0.22]);
+    mesh(ear, GEO.cone, belly, [0, 0.09 * s, 0.035 * s], [0.085 * s, 0.17 * s, 0.05 * s], [0, 0, sx * 0.24]);
   }
 
-  // Brazos
   const armL = g(body, -0.42 * s * fat, 0.18 * s, 0);
   const armR = g(body, 0.42 * s * fat, 0.18 * s, 0);
   for (const [arm, sx] of [
     [armL, -1],
     [armR, 1],
   ] as const) {
-    mesh(arm, GEO.capsule, fur, [0, -0.16 * s, 0], [0.115 * s, 0.16 * s, 0.115 * s], [0, 0, sx * 0.1]);
+    mesh(arm, GEO.capsule, plain, [0, -0.16 * s, 0], [0.115 * s, 0.16 * s, 0.115 * s], [0, 0, sx * 0.1]);
     mesh(arm, GEO.sphere, belly, [0, -0.34 * s, 0.02 * s], [0.12 * s, 0.11 * s, 0.12 * s]);
   }
   const hand = g(armR, 0, -0.36 * s, 0.02 * s);
 
-  // Patas cortas
   const legL = g(body, -0.22 * s * fat, -0.34 * s, 0);
   const legR = g(body, 0.22 * s * fat, -0.34 * s, 0);
   for (const leg of [legL, legR]) {
-    mesh(leg, GEO.capsule, fur, [0, -0.1 * s, 0], [0.13 * s, 0.1 * s, 0.13 * s]);
+    mesh(leg, GEO.capsule, plain, [0, -0.1 * s, 0], [0.13 * s, 0.1 * s, 0.13 * s]);
     mesh(leg, GEO.sphere, belly, [0, -0.23 * s, 0.06 * s], [0.14 * s, 0.09 * s, 0.18 * s]);
   }
 
-  // Cola segmentada
+  // Cola segmentada, con las rayas alternadas
   const tail = g(body, 0, 0.02 * s, -0.44 * s * fat);
   let seg: THREE.Object3D = tail;
   for (let i = 0; i < 5; i++) {
     const nxt = g(seg, 0, 0, -0.13 * s);
-    mesh(nxt, GEO.sphere, i % 2 === 0 ? fur : dark, [0, 0, 0], [(0.08 - i * 0.008) * s, (0.08 - i * 0.008) * s, 0.085 * s]);
+    mesh(
+      nxt,
+      GEO.sphere,
+      i % 2 === 0 ? plain : dark,
+      [0, 0, 0],
+      [(0.085 - i * 0.008) * s, (0.085 - i * 0.008) * s, 0.09 * s],
+    );
     seg = nxt;
   }
 
@@ -278,16 +261,9 @@ export function buildSilva(withOutline = true): CritterRig {
     eyeSize: 0.105,
     withOutline,
     stripes: true,
+    // Mirada condescendiente: el ceño va pintado en la cara
+    angry: 0.85,
   });
-  // Párpados caídos: mirada condescendiente
-  const lid = createCelMaterial({ color: 0x545c6e, bands: 2 });
-  rig.materials.push(lid);
-  for (const sx of [-1, 1]) {
-    const l = new THREE.Mesh(GEO.sphere, lid);
-    l.scale.set(0.13, 0.07, 0.1);
-    l.position.set(sx * 0.168, 0.13, 0.32);
-    rig.head.add(l);
-  }
   // Banda de teniente
   const sash = createCelMaterial({ color: 0x2a2a3a, bands: 2 });
   rig.materials.push(sash);
@@ -302,15 +278,25 @@ export function buildSilva(withOutline = true): CritterRig {
 /** Deedee: chihuahua diminuto, canela, lengua permanentemente fuera, capa negra. */
 export function buildDeedee(withOutline = true): CritterRig {
   const mats: THREE.Material[] = [];
-  const fur = createCelMaterial({ color: 0xd8935a, colorAlt: 0xb06f3e, bands: 3 });
+  const fur = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: faceForward(furTexture({ base: 0xd8935a, belly: 0xf3d2a8 })),
+  });
+  const plain = createCelMaterial({ color: 0xd8935a, bands: 3 });
   const belly = createCelMaterial({ color: 0xf3d2a8, bands: 3 });
-  const dark = createCelMaterial({ color: 0x241c22, bands: 2 });
-  const tongueMat = createCelMaterial({ color: 0xff5f86, bands: 2 });
-  const eyeMat = createCelMaterial({ color: 0x1a1420, bands: 2, emissive: 0.15 });
-  const capeMat = createCelMaterial({ color: 0x140f1c, colorAlt: 0x2a1f36, bands: 2, side: THREE.DoubleSide });
-  const helmMat = createCelMaterial({ color: 0x8a2be2, bands: 3, emissive: 0.35, rim: 0xff40ff });
-  const glass = createCelMaterial({ color: 0x40ffe0, bands: 2, emissive: 0.8, opacity: 0.75, transparent: true });
-  mats.push(fur, belly, dark, tongueMat, eyeMat, capeMat, helmMat, glass);
+  const capeMat = createCelMaterial({ color: 0x140f1c, bands: 2, side: THREE.DoubleSide });
+  const helmMat = createCelMaterial({ color: 0xffffff, bands: 3, map: helmetTexture(0x8a2be2), emissive: 0.22, rim: 0xc040ff });
+  const glass = createCelMaterial({ color: 0x40ffe0, bands: 2, emissive: 0.6, opacity: 0.8, transparent: true, rim: 0x40ffe0 });
+  // Cara con la lengua fuera y el ceño marcado: sus dos rasgos de carácter
+  const faceMat = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: faceForward(
+      faceTexture({ fur: 0xd8935a, belly: 0xf3d2a8, eye: 0x2a1a10, kind: 'dog', angry: 1, tongue: true }),
+    ),
+  });
+  mats.push(fur, plain, belly, capeMat, helmMat, glass, faceMat);
 
   const root = new THREE.Group();
   const s = 0.62; // muy pequeño frente a Benito
@@ -318,75 +304,52 @@ export function buildDeedee(withOutline = true): CritterRig {
   const body = g(root, 0, 0.5 * s, 0);
   const torso = mesh(body, GEO.sphere, fur, [0, 0, 0], [0.3 * s, 0.33 * s, 0.36 * s]);
   if (withOutline) outline(torso, 0.025);
-  mesh(body, GEO.sphere, belly, [0, -0.06 * s, 0.16 * s], [0.2 * s, 0.22 * s, 0.24 * s]);
+  mesh(body, GEO.sphere, belly, [0, -0.05 * s, 0.26 * s], [0.19 * s, 0.22 * s, 0.16 * s]);
 
   const head = g(body, 0, 0.46 * s, 0.05 * s);
-  const skull = mesh(head, GEO.sphere, fur, [0, 0, 0], [0.34 * s, 0.34 * s, 0.31 * s]);
+  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.42 * s, 0.42 * s, 0.38 * s]);
   if (withOutline) outline(skull, 0.025);
-  // Hocico puntiagudo
-  mesh(head, GEO.cone, fur, [0, -0.1 * s, 0.3 * s], [0.13 * s, 0.24 * s, 0.13 * s], [Math.PI / 2.1, 0, 0]);
-  mesh(head, GEO.sphere, dark, [0, -0.05 * s, 0.44 * s], [0.05 * s, 0.045 * s, 0.05 * s]);
+  // Hocico puntiagudo de chihuahua, lo único que sí necesita volumen
 
-  // LENGUA FUERA — su rasgo distintivo: siempre visible desde cualquier ángulo
-  const tongue = g(head, 0, -0.2 * s, 0.42 * s);
-  mesh(tongue, GEO.box, tongueMat, [0, -0.1 * s, 0.05 * s], [0.13 * s, 0.24 * s, 0.07 * s], [0.5, 0, 0]);
-  mesh(tongue, GEO.sphere, tongueMat, [0, -0.22 * s, 0.11 * s], [0.075 * s, 0.085 * s, 0.05 * s]);
-  if (withOutline) {
-    const to = new THREE.Mesh(GEO.box, createOutlineMaterial(0.03));
-    to.position.set(0, -0.1 * s, 0.05 * s);
-    to.scale.set(0.13 * s, 0.24 * s, 0.07 * s);
-    to.rotation.x = 0.5;
-    to.renderOrder = -1;
-    tongue.add(to);
-  }
 
-  // Ojos pequeños y malvados
-  for (const sx of [-1, 1]) {
-    mesh(head, GEO.sphere, eyeMat, [sx * 0.14 * s, 0.06 * s, 0.26 * s], [0.06 * s, 0.075 * s, 0.05 * s]);
-    mesh(head, GEO.box, fur, [sx * 0.14 * s, 0.13 * s, 0.28 * s], [0.14 * s, 0.05 * s, 0.05 * s], [0, 0, sx * 0.45]);
-  }
-
-  // Orejas enormes de chihuahua
-  const earL = g(head, -0.26 * s, 0.24 * s, -0.02 * s);
-  const earR = g(head, 0.26 * s, 0.24 * s, -0.02 * s);
+  // Orejas enormes: su silueta más reconocible
+  const earL = g(head, -0.27 * s, 0.24 * s, -0.02 * s);
+  const earR = g(head, 0.27 * s, 0.24 * s, -0.02 * s);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    const e = mesh(ear, GEO.cone, fur, [0, 0.16 * s, 0], [0.16 * s, 0.4 * s, 0.06 * s], [0, 0, sx * 0.35]);
+    const e = mesh(ear, GEO.cone, plain, [0, 0.18 * s, 0], [0.17 * s, 0.44 * s, 0.07 * s], [0, 0, sx * 0.35]);
     if (withOutline) outline(e, 0.02);
-    mesh(ear, GEO.cone, belly, [0, 0.15 * s, 0.02 * s], [0.1 * s, 0.3 * s, 0.03 * s], [0, 0, sx * 0.35]);
+    mesh(ear, GEO.cone, belly, [0, 0.17 * s, 0.03 * s], [0.1 * s, 0.33 * s, 0.03 * s], [0, 0, sx * 0.35]);
   }
 
   // Casco de Potencia Canina Avanzado
-  const helmet = g(head, 0, 0.2 * s, 0);
-  const dome = mesh(helmet, GEO.sphere, helmMat, [0, 0.06 * s, 0], [0.36 * s, 0.26 * s, 0.34 * s]);
+  const helmet = g(head, 0, 0.22 * s, 0);
+  const dome = mesh(helmet, GEO.sphere, helmMat, [0, 0.06 * s, 0], [0.38 * s, 0.28 * s, 0.36 * s]);
   if (withOutline) outline(dome, 0.022);
-  mesh(helmet, GEO.torus, helmMat, [0, 0.02 * s, 0], [0.36 * s, 0.36 * s, 0.36 * s], [Math.PI / 2, 0, 0]);
-  const core = mesh(helmet, GEO.sphere, glass, [0, 0.2 * s, 0], [0.14 * s, 0.16 * s, 0.14 * s]);
+  mesh(helmet, GEO.torus, helmMat, [0, 0.02 * s, 0], [0.38 * s, 0.38 * s, 0.38 * s], [Math.PI / 2, 0, 0]);
+  const core = mesh(helmet, GEO.sphere, glass, [0, 0.22 * s, 0], [0.14 * s, 0.16 * s, 0.14 * s]);
   for (const sx of [-1, 1]) {
-    mesh(helmet, GEO.cylinder, glass, [sx * 0.3 * s, 0.12 * s, 0], [0.03 * s, 0.28 * s, 0.03 * s], [0, 0, sx * 0.4]);
+    mesh(helmet, GEO.cylinder, glass, [sx * 0.32 * s, 0.13 * s, 0], [0.03 * s, 0.3 * s, 0.03 * s], [0, 0, sx * 0.4]);
   }
 
-  // Capa
   const cape = g(body, 0, 0.2 * s, -0.24 * s);
-  const capeMesh = mesh(cape, GEO.cone, capeMat, [0, -0.34 * s, -0.05 * s], [0.5 * s, 0.8 * s, 0.34 * s], [0.22, 0, 0]);
-  capeMesh.castShadow = true;
+  mesh(cape, GEO.cone, capeMat, [0, -0.34 * s, -0.05 * s], [0.52 * s, 0.85 * s, 0.36 * s], [0.22, 0, 0]);
 
-  // Extremidades finas
   const armL = g(body, -0.26 * s, 0.1 * s, 0);
   const armR = g(body, 0.26 * s, 0.1 * s, 0);
   for (const arm of [armL, armR]) {
-    mesh(arm, GEO.capsule, fur, [0, -0.14 * s, 0], [0.06 * s, 0.12 * s, 0.06 * s]);
+    mesh(arm, GEO.capsule, plain, [0, -0.14 * s, 0], [0.06 * s, 0.12 * s, 0.06 * s]);
   }
   const legL = g(body, -0.15 * s, -0.28 * s, 0);
   const legR = g(body, 0.15 * s, -0.28 * s, 0);
   for (const leg of [legL, legR]) {
-    mesh(leg, GEO.capsule, fur, [0, -0.12 * s, 0], [0.065 * s, 0.12 * s, 0.065 * s]);
+    mesh(leg, GEO.capsule, plain, [0, -0.12 * s, 0], [0.065 * s, 0.12 * s, 0.065 * s]);
     mesh(leg, GEO.sphere, belly, [0, -0.26 * s, 0.04 * s], [0.08 * s, 0.05 * s, 0.11 * s]);
   }
   const tail = g(body, 0, 0.1 * s, -0.32 * s);
-  mesh(tail, GEO.capsule, fur, [0, 0.1 * s, -0.04 * s], [0.04 * s, 0.14 * s, 0.04 * s], [0.9, 0, 0]);
+  mesh(tail, GEO.capsule, plain, [0, 0.1 * s, -0.04 * s], [0.04 * s, 0.14 * s, 0.04 * s], [0.9, 0, 0]);
 
   root.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;
@@ -404,7 +367,7 @@ export function buildDeedee(withOutline = true): CritterRig {
     earL,
     earR,
     hand: armR,
-    extras: { helmet, tongue, cape, core, dome },
+    extras: { helmet, cape, core, dome },
     materials: mats,
     height: 0.95,
     radius: 0.3,
@@ -431,14 +394,25 @@ export type PetRig = CritterRig & {
 export function buildPet(color: string, withOutline = true): PetRig {
   const c = PET_COLORS[color] ?? PET_COLORS.yellow;
   const mats: THREE.Material[] = [];
-  const fur = createCelMaterial({ color: c.fur, colorAlt: c.furAlt, bands: 3 });
-  const pants = createCelMaterial({ color: c.pants, bands: 3, emissive: 0.12 });
+
+  const fur = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: faceForward(furTexture({ base: c.fur, belly: c.furAlt, stripe: c.furAlt })),
+  });
+  const plain = createCelMaterial({ color: c.fur, bands: 3 });
+  // Los pantalones de color identifican el tipo: llevan trama y costura
+  const pants = createCelMaterial({ color: 0xffffff, bands: 3, map: clothTexture(c.pants), mapRepeat: 2 });
   const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
   const skin = createCelMaterial({ color: 0xf0cbb0, bands: 2 });
-  const eyeWhite = createCelMaterial({ color: 0xffffff, bands: 2, emissive: 0.3 });
-  const helmetMat = createCelMaterial({ color: 0x6a6f88, bands: 3, rim: 0xaad0ff });
+  const helmetMat = createCelMaterial({ color: 0xffffff, bands: 3, map: helmetTexture(0x6a6f88) });
   const lightMat = createCelMaterial({ color: 0x40a0ff, bands: 2, emissive: 1.1, rim: 0x80c0ff });
-  mats.push(fur, pants, dark, skin, eyeWhite, helmetMat, lightMat);
+  const faceMat = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: faceForward(faceTexture({ fur: c.fur, belly: 0xf0cbb0, eye: 0x201820, kind: 'pet' })),
+  });
+  mats.push(fur, plain, pants, dark, skin, helmetMat, lightMat, faceMat);
 
   const root = new THREE.Group();
   const s = 0.78;
@@ -446,42 +420,35 @@ export function buildPet(color: string, withOutline = true): PetRig {
   const body = g(root, 0, 0.5 * s, 0);
   const torso = mesh(body, GEO.capsule, fur, [0, 0, 0], [0.26 * s, 0.2 * s, 0.26 * s]);
   if (withOutline) outline(torso, 0.024);
-  mesh(body, GEO.sphere, skin, [0, -0.02 * s, 0.18 * s], [0.16 * s, 0.18 * s, 0.14 * s]);
-  // Pantalones de color: identifican el tipo de mascota
+  mesh(body, GEO.sphere, skin, [0, -0.02 * s, 0.22 * s], [0.17 * s, 0.2 * s, 0.12 * s]);
   const trousers = mesh(body, GEO.capsule, pants, [0, -0.3 * s, 0], [0.27 * s, 0.14 * s, 0.27 * s]);
   if (withOutline) outline(trousers, 0.02);
 
   const head = g(body, 0, 0.42 * s, 0.02 * s);
-  const skull = mesh(head, GEO.sphere, fur, [0, 0, 0], [0.32 * s, 0.3 * s, 0.3 * s]);
+  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.33 * s, 0.31 * s, 0.31 * s]);
   if (withOutline) outline(skull, 0.024);
-  mesh(head, GEO.sphere, skin, [0, -0.06 * s, 0.24 * s], [0.2 * s, 0.16 * s, 0.14 * s]);
-  mesh(head, GEO.sphere, dark, [0, -0.02 * s, 0.34 * s], [0.05 * s, 0.045 * s, 0.045 * s]);
-  for (const sx of [-1, 1]) {
-    mesh(head, GEO.sphere, eyeWhite, [sx * 0.12 * s, 0.08 * s, 0.25 * s], [0.09 * s, 0.1 * s, 0.06 * s]);
-    mesh(head, GEO.sphere, dark, [sx * 0.13 * s, 0.08 * s, 0.29 * s], [0.045 * s, 0.055 * s, 0.04 * s]);
-  }
 
-  const earL = g(head, -0.28 * s, 0.1 * s, 0);
-  const earR = g(head, 0.28 * s, 0.1 * s, 0);
+  const earL = g(head, -0.3 * s, 0.08 * s, 0);
+  const earR = g(head, 0.3 * s, 0.08 * s, 0);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    mesh(ear, GEO.sphere, fur, [0, -0.06 * s, 0], [0.09 * s, 0.16 * s, 0.06 * s], [0, 0, sx * 0.2]);
+    mesh(ear, GEO.sphere, plain, [0, -0.07 * s, 0], [0.1 * s, 0.18 * s, 0.07 * s], [0, 0, sx * 0.2]);
   }
 
-  // Casco con luz de estado
+  // Casco con la luz de estado, que es la señal de juego más importante
   const helmet = g(head, 0, 0.16 * s, 0);
-  const dome = mesh(helmet, GEO.sphere, helmetMat, [0, 0.05 * s, 0], [0.34 * s, 0.24 * s, 0.32 * s]);
+  const dome = mesh(helmet, GEO.sphere, helmetMat, [0, 0.05 * s, 0], [0.35 * s, 0.25 * s, 0.33 * s]);
   if (withOutline) outline(dome, 0.02);
-  mesh(helmet, GEO.torus, helmetMat, [0, 0, 0], [0.33 * s, 0.33 * s, 0.33 * s], [Math.PI / 2, 0, 0]);
-  const helmetLight = mesh(helmet, GEO.sphere, lightMat, [0, 0.22 * s, 0.06 * s], [0.09 * s, 0.09 * s, 0.09 * s]);
+  mesh(helmet, GEO.torus, helmetMat, [0, 0, 0], [0.34 * s, 0.34 * s, 0.34 * s], [Math.PI / 2, 0, 0]);
+  const helmetLight = mesh(helmet, GEO.sphere, lightMat, [0, 0.23 * s, 0.06 * s], [0.1 * s, 0.1 * s, 0.1 * s]);
   mesh(helmet, GEO.cylinder, helmetMat, [0, 0.16 * s, 0.04 * s], [0.02 * s, 0.14 * s, 0.02 * s]);
 
   const armL = g(body, -0.28 * s, 0.16 * s, 0);
   const armR = g(body, 0.28 * s, 0.16 * s, 0);
   for (const arm of [armL, armR]) {
-    mesh(arm, GEO.capsule, fur, [0, -0.16 * s, 0], [0.07 * s, 0.14 * s, 0.07 * s]);
+    mesh(arm, GEO.capsule, plain, [0, -0.16 * s, 0], [0.07 * s, 0.14 * s, 0.07 * s]);
     mesh(arm, GEO.sphere, skin, [0, -0.34 * s, 0], [0.08 * s, 0.08 * s, 0.08 * s]);
   }
   const legL = g(body, -0.14 * s, -0.36 * s, 0);
@@ -491,7 +458,7 @@ export function buildPet(color: string, withOutline = true): PetRig {
     mesh(leg, GEO.sphere, dark, [0, -0.26 * s, 0.05 * s], [0.1 * s, 0.06 * s, 0.13 * s]);
   }
   const tail = g(body, 0, 0.06 * s, -0.28 * s);
-  mesh(tail, GEO.capsule, fur, [0, 0.08 * s, -0.06 * s], [0.05 * s, 0.12 * s, 0.05 * s], [0.7, 0, 0]);
+  mesh(tail, GEO.capsule, plain, [0, 0.08 * s, -0.06 * s], [0.05 * s, 0.12 * s, 0.05 * s], [0.7, 0, 0]);
 
   root.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;
@@ -552,6 +519,7 @@ export function buildProfessor(): CritterRig {
     eyeSize: 0.12,
     withOutline: true,
     stripes: false,
+    glasses: true,
   });
   const coat = createCelMaterial({ color: 0xf8f8fa, bands: 3 });
   const glassMat = createCelMaterial({ color: 0xa0e0ff, bands: 2, emissive: 0.5, opacity: 0.6, transparent: true });
@@ -563,20 +531,6 @@ export function buildProfessor(): CritterRig {
   lab.position.set(0, -0.06, 0);
   rig.body.add(lab);
 
-  for (const sx of [-1, 1]) {
-    const lens = new THREE.Mesh(GEO.sphere, glassMat);
-    lens.scale.set(0.17, 0.17, 0.06);
-    lens.position.set(sx * 0.16, 0.06, 0.36);
-    rig.head.add(lens);
-    const ring = new THREE.Mesh(GEO.torus, frame);
-    ring.scale.set(0.17, 0.17, 0.17);
-    ring.position.set(sx * 0.16, 0.06, 0.36);
-    rig.head.add(ring);
-  }
-  const bridge = new THREE.Mesh(GEO.box, frame);
-  bridge.scale.set(0.16, 0.02, 0.02);
-  bridge.position.set(0, 0.06, 0.36);
-  rig.head.add(bridge);
   return rig;
 }
 

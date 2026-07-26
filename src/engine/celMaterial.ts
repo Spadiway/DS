@@ -61,6 +61,10 @@ export type CelOptions = {
   side?: THREE.Side;
   depthWrite?: boolean;
   vertexColors?: boolean;
+  /** Textura difusa. Si es en escala de grises, multiplica al color base. */
+  map?: THREE.Texture | null;
+  /** Repetición de la textura sobre la superficie. */
+  mapRepeat?: number;
 };
 
 const registry = new Set<THREE.Material>();
@@ -82,8 +86,14 @@ export const celLight = {
 export function createCelMaterial(opts: CelOptions): THREE.MeshToonMaterial {
   const color = new THREE.Color(opts.color);
   const emissiveAmount = opts.emissive ?? 0;
+  const map = opts.map ?? null;
+  if (map && opts.mapRepeat && opts.mapRepeat !== 1) {
+    map.repeat.set(opts.mapRepeat, opts.mapRepeat);
+    map.needsUpdate = true;
+  }
   const mat = new THREE.MeshToonMaterial({
     color,
+    map,
     gradientMap: gradientMap(opts.bands ?? 3),
     transparent: opts.transparent ?? (opts.opacity ?? 1) < 1,
     opacity: opts.opacity ?? 1,
@@ -117,12 +127,24 @@ export function createTerrainMaterial(opts: {
   cliff: number;
   bands?: number;
   snowLine?: number;
+  detail?: THREE.Texture | null;
+  detailRepeat?: number;
 }): THREE.MeshToonMaterial {
+  // La textura de detalle es gris y se multiplica por el color de vértice:
+  // una sola imagen sirve para hierba, arena, roca y nieve manteniendo la
+  // paleta de cada mundo, y aporta el grano de téxel de la época.
   const mat = createCelMaterial({
     color: 0xffffff,
     bands: opts.bands ?? 4,
     vertexColors: true,
+    map: opts.detail ?? null,
   });
+  if (mat.map && opts.detailRepeat) {
+    mat.map = mat.map.clone();
+    mat.map.wrapS = mat.map.wrapT = THREE.RepeatWrapping;
+    mat.map.repeat.set(opts.detailRepeat, opts.detailRepeat);
+    mat.map.needsUpdate = true;
+  }
   return mat;
 }
 

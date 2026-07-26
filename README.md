@@ -33,11 +33,19 @@ En su lugar, **el juego genera todo en tiempo de ejecución**:
 | Decorado | Geometrías fusionadas e instanciadas en `engine/props.ts` |
 | Música | Síntesis WebAudio por mundo en `core/audio.ts` |
 | Efectos | Osciladores y ruido filtrado, también en `core/audio.ts` |
+| Texturas | Dibujadas con canvas 2D en `engine/textures.ts` |
 | Interfaz | CSS puro |
 
 El sombreado es cel real sobre `MeshToonMaterial`: bandas duras mediante mapa de
 degradado de pocos pasos, con sombras proyectadas, niebla y luces del pipeline
 de Three, contorno por casco invertido y una pasada de bloom para el neón.
+
+**Todo va texturizado**, que es lo que separa el aspecto de aquella generación
+de consolas del "low poly" moderno de colores planos: suelo, corteza, hoja,
+piedra, chapa, tela y casco tienen su imagen, dibujada a 64–256 px para que el
+téxel se note. Y **las caras de los personajes están pintadas en la textura**
+—ojos, iris, pupila, brillo, nariz, boca, bigotes y ceño—, no montadas con
+esferas: poca geometría y toda la expresión en la imagen.
 
 Consecuencias prácticas: el repositorio no tiene carpeta de recursos, la
 compilación pesa unos 900 kB (≈250 kB comprimidos), no hay descargas al
@@ -223,8 +231,13 @@ segundo en vez de en cada fotograma, para no re-renderizar React a 60 Hz.
   los vértices y mezcla hierba, tierra, roca, orilla y nieve según pendiente,
   altura y tres escalas de ruido.
 - **Decorado** con color por rol horneado en los vértices: tronco, hoja, piedra,
-  acento y brillo, todo en una malla instanciada por tipo. Los objetos que se
-  interponen entre la cámara y Benito se disuelven con un patrón de ruido.
+  acento y brillo, todo en una malla instanciada por tipo, con textura de grano
+  encima. Los objetos que se interponen entre la cámara y Benito se disuelven
+  con un patrón de ruido.
+- **Caras pintadas**: la cabeza es una esfera y el rostro va en la textura,
+  alineado con el frente del modelo. Cambiar de personaje es cambiar de dibujo:
+  el ceño de Silva, las gafas del Profesor y la lengua fuera de Deedee son
+  parámetros de la misma función.
 - **Bloom** sobre lo emisivo (cascos en alerta, cristales, neones, portales) y
   tonemapping ACES para que los colores saturados no se quemen.
 
