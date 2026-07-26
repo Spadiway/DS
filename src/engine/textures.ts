@@ -87,32 +87,54 @@ export function groundDetailTexture(): THREE.CanvasTexture {
   const hit = cache.get(key);
   if (hit) return hit;
 
-  const size = 128;
+  const size = 256;
   const { c, ctx } = canvas(size);
-  ctx.fillStyle = '#9a9a9a';
+  ctx.fillStyle = '#9c9c9c';
   ctx.fillRect(0, 0, size, size);
 
-  // Manchas grandes de tono
-  speckle(ctx, size, 90, [7, 20], ['#b4b4b4', '#868686', '#a6a6a6'], 0.5);
-  // Grano medio
-  speckle(ctx, size, 420, [1.2, 3.4], ['#c2c2c2', '#787878', '#adadad'], 0.55);
-  // Briznas y guijarros: el detalle que se nota al andar
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 340; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const len = 2 + Math.random() * 4;
-    const a = Math.random() * Math.PI;
-    ctx.strokeStyle = Math.random() < 0.5 ? 'rgba(210,210,210,0.5)' : 'rgba(90,90,90,0.45)';
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-    ctx.stroke();
+  // Manchas amplias: zonas más gastadas y más frondosas
+  speckle(ctx, size, 120, [14, 40], ['#b8b8b8', '#828282', '#a8a8a8'], 0.4);
+
+  // Matas de hierba: grupos de briznas en abanico, no ruido suelto.
+  // Es lo que hace que el suelo se lea como hierba y no como plástico moteado.
+  for (let clump = 0; clump < 260; clump++) {
+    const cxp = Math.random() * size;
+    const cyp = Math.random() * size;
+    const blades = 5 + Math.floor(Math.random() * 6);
+    const bright = Math.random() < 0.5;
+    for (let b = 0; b < blades; b++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.5;
+      const len = 4 + Math.random() * 8;
+      const x0 = cxp + (Math.random() - 0.5) * 7;
+      const y0 = cyp + (Math.random() - 0.5) * 7;
+      ctx.strokeStyle = bright ? 'rgba(216,216,216,0.55)' : 'rgba(96,96,96,0.5)';
+      ctx.lineWidth = 1 + Math.random();
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo(x0 + Math.cos(a) * len * 0.5, y0 + Math.sin(a) * len * 0.6, x0 + Math.cos(a) * len, y0 + Math.sin(a) * len);
+      ctx.stroke();
+      // Réplica por los bordes para que la textura siga siendo tileable
+      for (const [ox, oy] of [
+        [size, 0],
+        [-size, 0],
+        [0, size],
+        [0, -size],
+      ]) {
+        ctx.beginPath();
+        ctx.moveTo(x0 + ox, y0 + oy);
+        ctx.lineTo(x0 + ox + Math.cos(a) * len, y0 + oy + Math.sin(a) * len);
+        ctx.stroke();
+      }
+    }
   }
-  // Píxeles sueltos: el "ruido de téxel" característico
+
+  // Guijarros y granos sueltos
+  speckle(ctx, size, 520, [1, 2.8], ['#c8c8c8', '#6e6e6e', '#b0b0b0'], 0.5);
+
+  // Ruido de téxel: el grano fino característico de la resolución de la época
   const img = ctx.getImageData(0, 0, size, size);
   for (let i = 0; i < img.data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 26;
+    const n = (Math.random() - 0.5) * 20;
     img.data[i] += n;
     img.data[i + 1] += n;
     img.data[i + 2] += n;
@@ -133,16 +155,30 @@ export function barkTexture(base: number): THREE.CanvasTexture {
   const { c, ctx } = canvas(size);
   ctx.fillStyle = hex(base);
   ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 26; i++) {
+  // Vetas verticales profundas, como las de la referencia
+  for (let i = 0; i < 34; i++) {
     const x = Math.random() * size;
-    ctx.strokeStyle = Math.random() < 0.5 ? shade(base, 0.72) : shade(base, 1.22);
-    ctx.lineWidth = 1 + Math.random() * 2.5;
+    const dark = Math.random() < 0.55;
+    ctx.strokeStyle = dark ? shade(base, 0.6) : shade(base, 1.3);
+    ctx.lineWidth = dark ? 1 + Math.random() * 3.5 : 1 + Math.random() * 1.5;
     ctx.beginPath();
     ctx.moveTo(x, 0);
-    for (let y = 0; y <= size; y += 8) ctx.lineTo(x + Math.sin(y * 0.4 + i) * 2, y);
+    for (let y = 0; y <= size; y += 6) ctx.lineTo(x + Math.sin(y * 0.35 + i) * 2.5, y);
     ctx.stroke();
   }
-  speckle(ctx, size, 120, [0.8, 2], [shade(base, 0.8), shade(base, 1.15)], 0.5);
+  // Nudos de la madera
+  for (let i = 0; i < 3; i++) {
+    const kx = Math.random() * size;
+    const ky = Math.random() * size;
+    ctx.strokeStyle = shade(base, 0.55);
+    for (let r = 2; r < 9; r += 2) {
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.ellipse(kx, ky, r, r * 1.7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  speckle(ctx, size, 140, [0.8, 2], [shade(base, 0.78), shade(base, 1.18)], 0.45);
   const tex = finish(c, { repeat: 1 });
   cache.set(key, tex);
   return tex;

@@ -67,7 +67,61 @@ const GATE_REQUIRES: Record<GateObstacle['kind'], string> = {
   waterZone: 'waterNet',
 };
 
-function buildHeightfield(spec: LevelSpec): Heightfield {
+/**
+ * Traza el camino principal del nivel: una ruta sinuosa que atraviesa la zona
+ * jugable pasando por el centro. En las referencias del género el camino de
+ * tierra es lo que hace que un escenario parezca construido y no generado:
+ * ordena el recorrido, da un hilo que seguir y rompe la extensión de hierba.
+ */
+function buildPathPoints(spec: LevelSpec, rng: Rng): { x: number; z: number }[] {
+  const pts: { x: number; z: number }[] = [];
+  const reach = spec.size * 0.4;
+  const startAngle = rng() * Math.PI * 2;
+  const nodes = 7;
+  for (let i = 0; i < nodes; i++) {
+    const t = i / (nodes - 1);
+    // Recta de lado a lado con serpenteo perpendicular
+    const along = (t - 0.5) * 2 * reach;
+    const wobble = Math.sin(t * Math.PI * 2.3 + rng() * 0.6) * reach * 0.38;
+    const c = Math.cos(startAngle);
+    const sn = Math.sin(startAngle);
+    pts.push({ x: along * c - wobble * sn, z: along * sn + wobble * c });
+  }
+  // Subdivisión suave: el camino no debe tener esquinas
+  const smooth: { x: number; z: number }[] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    for (let k = 0; k < 6; k++) {
+      const t = k / 6;
+      const e = t * t * (3 - 2 * t);
+      smooth.push({ x: a.x + (b.x - a.x) * e, z: a.z + (b.z - a.z) * e });
+    }
+  }
+  smooth.push(pts[pts.length - 1]);
+  return smooth;
+}
+
+/** Distancia de un punto a la polilínea del camino. */
+function distanceToPath(x: number, z: number, path: { x: number; z: number }[]): number {
+  let best = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len2 = dx * dx + dz * dz;
+    let t = len2 > 0 ? ((x - a.x) * dx + (z - a.z) * dz) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const px = a.x + dx * t;
+    const pz = a.z + dz * t;
+    const d = Math.hypot(x - px, z - pz);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function buildHeightfield(spec: LevelSpec, rng: Rng): { hf: Heightfield; path: { x: number; z: number }[]; pathMask: Float32Array } {
   const res = 129;
   const size = spec.size;
   const data = new Float32Array(res * res);
@@ -144,10 +198,72 @@ function buildHeightfield(spec: LevelSpec): Heightfield {
     }
   }
 
-  return { size, res, cell: size / (res - 1), data, liquidLevel: spec.liquid.level };
+  // ── Camino ──────────────────────────────────────────────────────────────
+  // Se allana el terreno bajo la ruta para que sea transitable de verdad, y se
+  // guarda una máscara que el coloreado usa para pintar la tierra.
+  const path = buildPathPoints(spec, rng);
+  const pathMask = new Float32Array(res * res);
+  const halfSize = size / 2;
+  const pathWidth = 7.5;
+  const feather = 5.5;
+
+  // Altura de referencia del camino: media suavizada a lo largo del trazado
+  const smoothHeights: number[] = [];
+  for (const p of path) {
+    const fx = Math.round(((p.x + halfSize) / size) * (res - 1));
+    const fz = Math.round(((p.z + halfSize) / size) * (res - 1));
+    const ix = Math.max(0, Math.min(res - 1, fx));
+    const iz = Math.max(0, Math.min(res - 1, fz));
+    smoothHeights.push(data[iz * res + ix]);
+  }
+  // Media móvil: el camino sube y baja con suavidad, sin escalones
+  const rolled = smoothHeights.map((_, i) => {
+    let sum = 0;
+    let n = 0;
+    for (let k = -4; k <= 4; k++) {
+      const j = i + k;
+      if (j >= 0 && j < smoothHeights.length) {
+        sum += smoothHeights[j];
+        n++;
+      }
+    }
+    return sum / n;
+  });
+
+  for (let z = 0; z < res; z++) {
+    for (let x = 0; x < res; x++) {
+      const wx = (x / (res - 1)) * size - halfSize;
+      const wz = (z / (res - 1)) * size - halfSize;
+      const d = distanceToPath(wx, wz, path);
+      if (d > pathWidth + feather) continue;
+
+      // Altura del punto más cercano del trazado
+      let bestI = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < path.length; i++) {
+        const dd = Math.hypot(wx - path[i].x, wz - path[i].z);
+        if (dd < bestD) {
+          bestD = dd;
+          bestI = i;
+        }
+      }
+      const target = rolled[bestI];
+      const t = d <= pathWidth ? 1 : 1 - (d - pathWidth) / feather;
+      const w = t * t * (3 - 2 * t);
+      const idx = z * res + x;
+      data[idx] = data[idx] * (1 - w * 0.85) + target * w * 0.85;
+      pathMask[idx] = Math.max(pathMask[idx], w);
+    }
+  }
+
+  return { hf: { size, res, cell: size / (res - 1), data, liquidLevel: spec.liquid.level }, path, pathMask };
 }
 
-function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh; mat: THREE.Material } {
+function buildTerrainMesh(
+  hf: Heightfield,
+  spec: LevelSpec,
+  pathMask: Float32Array,
+): { mesh: THREE.Mesh; mat: THREE.Material } {
   const geo = new THREE.PlaneGeometry(hf.size, hf.size, hf.res - 1, hf.res - 1);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -170,6 +286,8 @@ function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh;
   const rock = new THREE.Color(pal.cliff);
   const snow = new THREE.Color(0xf2f7ff);
   const shore = new THREE.Color(pal.liquid).lerp(new THREE.Color(pal.groundAlt), 0.55);
+  // Tierra batida del camino: más cálida y saturada que el terreno alterno
+  const pathColor = new THREE.Color(pal.groundAlt).lerp(new THREE.Color(0xa87a44), 0.6);
   const snowLine = spec.worldId === 4 ? 3.5 : Infinity;
 
   const normals = geo.attributes.normal as THREE.BufferAttribute;
@@ -202,6 +320,15 @@ function buildTerrainMesh(hf: Heightfield, spec: LevelSpec): { mesh: THREE.Mesh;
     // Nieve en las cotas altas del mundo helado
     if (y > snowLine) {
       c.lerp(snow, clamp((y - snowLine) / 6, 0, 1) * (1 - smoothstepf(0.3, 0.6, slope)));
+    }
+
+    // Camino de tierra pisada, con roderas más claras en el centro
+    const row = Math.floor(i / hf.res);
+    const col = i % hf.res;
+    const pm = pathMask[row * hf.res + col] ?? 0;
+    if (pm > 0.01) {
+      const wear = 0.55 + fine * 0.5;
+      c.lerp(pathColor.clone().multiplyScalar(wear), Math.min(1, pm * 1.15));
     }
 
     // Variación fina de luminosidad: rompe las bandas planas
@@ -275,9 +402,9 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   const q = qualityPreset();
 
   // ── Terreno ──
-  const hf = buildHeightfield(spec);
+  const { hf, path, pathMask } = buildHeightfield(spec, rng);
   const world = new CollisionWorld(hf);
-  const { mesh: terrainMesh, mat: terrainMat } = buildTerrainMesh(hf, spec);
+  const { mesh: terrainMesh, mat: terrainMat } = buildTerrainMesh(hf, spec, pathMask);
   group.add(terrainMesh);
   materials.push(terrainMat);
   disposables.push(terrainMesh.geometry);
@@ -647,6 +774,8 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     });
     for (const m of materials) m.dispose();
   };
+
+  void path;
 
   return {
     spec,

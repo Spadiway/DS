@@ -64,7 +64,7 @@ export function updateAnim(rig: CritterRig, st: AnimState, input: AnimInput): vo
   // ── Cuerpo ──
   const bob = Math.sin(w * 2) * 0.045 * loco;
   const crouchDrop = input.crouching ? -0.22 : 0;
-  rig.body.position.y = lerp(rig.body.position.y, 0.62 + bob + crouchDrop + breathe, Math.min(1, dt * 18));
+  rig.body.position.y = lerp(rig.body.position.y, rig.bodyRestY + bob + crouchDrop + breathe, Math.min(1, dt * 18));
   rig.body.rotation.x = lerp(rig.body.rotation.x, loco * 0.16 + (input.crouching ? 0.3 : 0) + air * -0.12, Math.min(1, dt * 12));
   rig.body.rotation.z = Math.sin(w) * 0.05 * loco;
   rig.body.rotation.y = Math.sin(w) * 0.09 * loco;
@@ -86,18 +86,34 @@ export function updateAnim(rig: CritterRig, st: AnimState, input: AnimInput): vo
   rig.earL.rotation.x = -air * 0.3;
   rig.earR.rotation.x = -air * 0.3;
 
-  // ── Patas ──
+  // ── Piernas ──
+  // Con rodilla, la pierna de apoyo se estira y la de vuelo se recoge, que es
+  // lo que da lectura de paso en vez de un péndulo rígido.
   const legSwing = Math.sin(w) * 0.85 * loco;
   const legSwing2 = Math.sin(w + Math.PI) * 0.85 * loco;
   rig.legL.rotation.x = legSwing - air * 0.5;
   rig.legR.rotation.x = legSwing2 - air * 0.2;
   rig.legL.rotation.z = 0.05;
   rig.legR.rotation.z = -0.05;
+  if (rig.shinL) {
+    const bend = Math.max(0, -Math.sin(w)) * 1.15 * loco + air * 0.55 + (input.crouching ? 0.7 : 0);
+    rig.shinL.rotation.x = bend;
+  }
+  if (rig.shinR) {
+    const bend = Math.max(0, -Math.sin(w + Math.PI)) * 1.15 * loco + air * 0.35 + (input.crouching ? 0.7 : 0);
+    rig.shinR.rotation.x = bend;
+  }
+  if (rig.neck) {
+    rig.neck.rotation.x = damp(rig.neck.rotation.x, -loco * 0.12 + (input.crouching ? 0.2 : 0), 9, dt);
+  }
 
   // ── Brazos ──
   const armBase = input.swimming ? 1.0 : 0;
   rig.armL.rotation.x = Math.sin(w + Math.PI) * 0.7 * loco - air * 0.9 + armBase;
   rig.armL.rotation.z = 0.16 + loco * 0.08;
+  if (rig.forearmL) {
+    rig.forearmL.rotation.x = -0.25 - Math.max(0, Math.sin(w + Math.PI)) * 0.75 * loco - air * 0.4;
+  }
 
   if (st.swing > 0) {
     // Golpe: arco rápido hacia delante con anticipación
@@ -108,14 +124,25 @@ export function updateAnim(rig: CritterRig, st: AnimState, input: AnimInput): vo
       rig.armR.rotation.x = -1.6 * strike + anticip;
       rig.armR.rotation.z = -0.1;
       rig.body.rotation.y += strike * 0.25;
+      // El codo se extiende al golpear: da chasquido al movimiento
+      if (rig.forearmR) rig.forearmR.rotation.x = -0.9 + strike * 0.9;
     } else {
       rig.armR.rotation.x = -2.6 * strike + anticip;
       rig.armR.rotation.z = -0.6 - strike * 0.9;
       rig.body.rotation.y += strike * 0.55;
+      if (rig.forearmR) rig.forearmR.rotation.x = -0.6 - strike * 0.5;
     }
   } else {
     rig.armR.rotation.x = damp(rig.armR.rotation.x, Math.sin(w) * 0.7 * loco - air * 0.9 + armBase, 12, dt);
     rig.armR.rotation.z = damp(rig.armR.rotation.z, -0.16 - loco * 0.08, 12, dt);
+    if (rig.forearmR) {
+      rig.forearmR.rotation.x = damp(
+        rig.forearmR.rotation.x,
+        -0.25 - Math.max(0, Math.sin(w)) * 0.75 * loco - air * 0.4,
+        12,
+        dt,
+      );
+    }
   }
 
   // ── Cola: látigo con retardo ──
@@ -151,6 +178,8 @@ export function poseCaptured(rig: CritterRig, progress: number): void {
   rig.armR.rotation.x = -p * 2.2;
   rig.legL.rotation.x = p * 1.8;
   rig.legR.rotation.x = p * 1.8;
+  if (rig.shinL) rig.shinL.rotation.x = p * 2.2;
+  if (rig.shinR) rig.shinR.rotation.x = p * 2.2;
 }
 
 /** Pose de aturdimiento: tambaleo con estrellas. */
@@ -165,4 +194,7 @@ export function poseStunned(rig: CritterRig, st: AnimState, dt: number): void {
   rig.armR.rotation.x = -0.6 - wob;
   rig.legL.rotation.x = 0.2;
   rig.legR.rotation.x = -0.2;
+  if (rig.shinL) rig.shinL.rotation.x = 0.5;
+  if (rig.shinR) rig.shinR.rotation.x = 0.35;
+  if (rig.neck) rig.neck.rotation.z = wob * 0.6;
 }

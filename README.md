@@ -230,6 +230,13 @@ segundo en vez de en cada fotograma, para no re-renderizar React a 60 Hz.
   lo que da una arquitectura legible en vez de una duna uniforme. El color va en
   los vértices y mezcla hierba, tierra, roca, orilla y nieve según pendiente,
   altura y tres escalas de ruido.
+- **Camino de tierra** tallado en el terreno: una ruta sinuosa que atraviesa la
+  zona jugable, allanada para ser transitable y pintada como tierra batida. Es
+  lo que hace que el escenario parezca construido y no generado.
+- **Personajes articulados**: torso torneado con perfil de pera (hombros
+  estrechos, barriga ancha, cadera recogida), cuello, brazos con codo y zarpa,
+  piernas con rodilla y pies grandes, cola segmentada. La animación dobla codos
+  y rodillas, así que el paso se lee como paso y no como péndulo.
 - **Decorado** con color por rol horneado en los vértices: tronco, hoja, piedra,
   acento y brillo, todo en una malla instanciada por tipo, con textura de grano
   encima. Los objetos que se interponen entre la cámara y Benito se disuelven

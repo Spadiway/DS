@@ -26,6 +26,14 @@ export type CritterRig = {
   root: THREE.Group;
   body: THREE.Group;
   head: THREE.Group;
+  /** Articulaciones intermedias: permiten doblar codo y rodilla al animar. */
+  forearmL?: THREE.Group;
+  forearmR?: THREE.Group;
+  shinL?: THREE.Group;
+  shinR?: THREE.Group;
+  neck?: THREE.Group;
+  /** Altura de reposo del torso: la animación parte de aquí al respirar. */
+  bodyRestY: number;
   armL: THREE.Group;
   armR: THREE.Group;
   legL: THREE.Group;
@@ -75,6 +83,20 @@ function outline(target: THREE.Mesh, thickness = 0.03): void {
   target.parent?.add(o);
 }
 
+/**
+ * Cuerpo torneado a partir de un perfil. Una esfera escalada da una bola; un
+ * torno permite hombros estrechos que se ensanchan hacia la barriga y se
+ * cierran en la cadera, que es la silueta de los personajes de referencia.
+ * El torno genera UV (u alrededor, v a lo largo), así que la textura de pelo
+ * envuelve igual que en la esfera.
+ */
+function latheBody(profile: [number, number][], segments = 14): THREE.BufferGeometry {
+  return new THREE.LatheGeometry(
+    profile.map(([r, y]) => new THREE.Vector2(Math.max(0.001, r), y)),
+    segments,
+  );
+}
+
 // Geometrías compartidas (se reutilizan entre todas las instancias)
 const GEO = {
   sphere: new THREE.SphereGeometry(1, 14, 10),
@@ -103,13 +125,17 @@ export type CatOptions = {
 };
 
 /**
- * Constructor genérico de felino: sirve para Benito (gordo) y Silva (esbelta).
+ * Constructor genérico de felino: sirve para Benito (corpulento) y Silva
+ * (esbelta).
  *
- * La cara —ojos, iris, pupila, brillo, nariz, boca, bigotes y marca atigrada—
- * va pintada en la textura de la cabeza, no montada con esferas. Las rayas y el
- * vientre claro también están en la textura del cuerpo. Es la forma en que se
- * construían los personajes en las consolas portátiles de la época: poca
- * geometría y toda la expresión en la imagen.
+ * Construcción por partes articuladas, no esferas apiladas:
+ *   cabeza grande con la cara pintada · cuello · torso torneado en pera ·
+ *   brazo con hombro, codo y zarpa · pierna con cadera, rodilla y pie grande ·
+ *   cola segmentada.
+ *
+ * Toda la expresión facial va en la textura: ojos con iris, pupila y brillo,
+ * nariz, boca, bigotes, marca atigrada y ceño. Poca geometría y mucha imagen,
+ * que es como se resolvía en la época.
  */
 export function buildCat(opts: CatOptions): CritterRig {
   const mats: THREE.Material[] = [];
@@ -142,56 +168,103 @@ export function buildCat(opts: CatOptions): CritterRig {
   const s = opts.scale;
   const fat = opts.fat;
 
-  const body = g(root, 0, 0.62 * s, 0);
-  const torso = mesh(body, GEO.sphere, fur, [0, 0, 0], [0.5 * s * fat, 0.44 * s, 0.46 * s * fat]);
-  if (opts.withOutline) outline(torso, 0.028);
-  mesh(body, GEO.sphere, belly, [0, -0.05 * s, 0.3 * s * fat], [0.3 * s * fat, 0.3 * s, 0.26 * s]);
+  // ── Torso ──────────────────────────────────────────────────────────────
+  // Perfil de pera: hombros estrechos, barriga ancha, cadera recogida.
+  const torsoGeo = latheBody([
+    [0.04, -0.46],
+    [0.26, -0.45],
+    [0.40, -0.36],
+    [0.47, -0.18],
+    [0.48, 0.02],
+    [0.43, 0.20],
+    [0.33, 0.34],
+    [0.21, 0.43],
+    [0.09, 0.47],
+    [0.02, 0.48],
+  ]);
+  const body = g(root, 0, 0.78 * s, 0);
+  const torso = mesh(body, torsoGeo, fur, [0, 0, 0], [s * fat, s, s * fat]);
+  if (opts.withOutline) outline(torso, 0.03);
+  // Pechera clara, desde la barbilla hasta la tripa
+  mesh(body, GEO.sphere, belly, [0, -0.06 * s, 0.3 * s * fat], [0.27 * s * fat, 0.32 * s, 0.22 * s]);
 
-  const head = g(body, 0, 0.52 * s, 0.03 * s);
-  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.44 * s, 0.42 * s, 0.42 * s]);
-  if (opts.withOutline) outline(skull, 0.026);
+  // ── Cuello y cabeza ────────────────────────────────────────────────────
+  const neck = g(body, 0, 0.44 * s, 0.01 * s);
+  mesh(neck, GEO.cylinder, plain, [0, 0.03 * s, 0], [0.17 * s, 0.09 * s, 0.17 * s]);
 
-  // Orejas: lo único de la cabeza que sí necesita silueta propia
-  const earL = g(head, -0.26 * s, 0.3 * s, 0);
-  const earR = g(head, 0.26 * s, 0.3 * s, 0);
+  const head = g(neck, 0, 0.16 * s, 0.02 * s);
+  // Cabeza ligeramente achatada: la cara pintada se lee mejor sobre una
+  // superficie ancha y poco esférica.
+  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.46 * s, 0.42 * s, 0.42 * s]);
+  if (opts.withOutline) outline(skull, 0.028);
+  // Carrillos: rompen la silueta redonda y dan cara de gato
+  for (const sx of [-1, 1]) {
+    mesh(head, GEO.sphere, plain, [sx * 0.33 * s, -0.1 * s, 0.14 * s], [0.14 * s, 0.13 * s, 0.14 * s]);
+  }
+
+  const earL = g(head, -0.27 * s, 0.28 * s, -0.02 * s);
+  const earR = g(head, 0.27 * s, 0.28 * s, -0.02 * s);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    const e = mesh(ear, GEO.cone, plain, [0, 0.1 * s, 0], [0.15 * s, 0.26 * s, 0.11 * s], [0, 0, sx * 0.24]);
-    if (opts.withOutline) outline(e, 0.022);
-    mesh(ear, GEO.cone, belly, [0, 0.09 * s, 0.035 * s], [0.085 * s, 0.17 * s, 0.05 * s], [0, 0, sx * 0.24]);
+    const e = mesh(ear, GEO.cone, plain, [0, 0.11 * s, 0], [0.16 * s, 0.28 * s, 0.12 * s], [0, 0, sx * 0.26]);
+    if (opts.withOutline) outline(e, 0.024);
+    mesh(ear, GEO.cone, belly, [0, 0.1 * s, 0.04 * s], [0.09 * s, 0.19 * s, 0.05 * s], [0, 0, sx * 0.26]);
   }
 
-  const armL = g(body, -0.42 * s * fat, 0.18 * s, 0);
-  const armR = g(body, 0.42 * s * fat, 0.18 * s, 0);
+  // ── Brazos: hombro, codo y zarpa ───────────────────────────────────────
+  // Los hombros van donde el perfil se estrecha: más afuera quedaban sueltos,
+  // más adentro desaparecían dentro de la barriga.
+  const armL = g(body, -0.44 * s * fat, 0.26 * s, 0);
+  const armR = g(body, 0.44 * s * fat, 0.26 * s, 0);
+  const forearms: THREE.Group[] = [];
   for (const [arm, sx] of [
     [armL, -1],
     [armR, 1],
   ] as const) {
-    mesh(arm, GEO.capsule, plain, [0, -0.16 * s, 0], [0.115 * s, 0.16 * s, 0.115 * s], [0, 0, sx * 0.1]);
-    mesh(arm, GEO.sphere, belly, [0, -0.34 * s, 0.02 * s], [0.12 * s, 0.11 * s, 0.12 * s]);
+    mesh(arm, GEO.sphere, plain, [0, 0, 0], [0.14 * s, 0.14 * s, 0.14 * s]);
+    mesh(arm, GEO.capsule, plain, [0, -0.14 * s, 0], [0.105 * s, 0.11 * s, 0.105 * s], [0, 0, sx * 0.14]);
+    const forearm = g(arm, sx * 0.05 * s, -0.29 * s, 0);
+    mesh(forearm, GEO.capsule, plain, [0, -0.1 * s, 0], [0.095 * s, 0.1 * s, 0.095 * s]);
+    // Zarpa: bola clara con dedos marcados
+    mesh(forearm, GEO.sphere, belly, [0, -0.24 * s, 0.01 * s], [0.115 * s, 0.1 * s, 0.115 * s]);
+    for (let i = -1; i <= 1; i++) {
+      mesh(forearm, GEO.sphere, belly, [i * 0.055 * s, -0.28 * s, 0.06 * s], [0.04 * s, 0.035 * s, 0.045 * s]);
+    }
+    forearms.push(forearm);
   }
-  const hand = g(armR, 0, -0.36 * s, 0.02 * s);
+  const hand = g(forearms[1], 0, -0.26 * s, 0.04 * s);
 
-  const legL = g(body, -0.22 * s * fat, -0.34 * s, 0);
-  const legR = g(body, 0.22 * s * fat, -0.34 * s, 0);
+  // ── Piernas: cadera, rodilla y pie grande ──────────────────────────────
+  const legL = g(body, -0.23 * s * fat, -0.38 * s, 0);
+  const legR = g(body, 0.23 * s * fat, -0.38 * s, 0);
+  const shins: THREE.Group[] = [];
   for (const leg of [legL, legR]) {
-    mesh(leg, GEO.capsule, plain, [0, -0.1 * s, 0], [0.13 * s, 0.1 * s, 0.13 * s]);
-    mesh(leg, GEO.sphere, belly, [0, -0.23 * s, 0.06 * s], [0.14 * s, 0.09 * s, 0.18 * s]);
+    mesh(leg, GEO.sphere, plain, [0, 0, 0], [0.145 * s, 0.14 * s, 0.145 * s]);
+    mesh(leg, GEO.capsule, plain, [0, -0.11 * s, 0], [0.12 * s, 0.08 * s, 0.12 * s]);
+    const shin = g(leg, 0, -0.24 * s, 0);
+    mesh(shin, GEO.capsule, plain, [0, -0.06 * s, 0], [0.105 * s, 0.06 * s, 0.105 * s]);
+    // Pie grande y alargado: en la referencia son muy marcados
+    const foot = mesh(shin, GEO.sphere, belly, [0, -0.16 * s, 0.07 * s], [0.145 * s, 0.09 * s, 0.22 * s]);
+    if (opts.withOutline) outline(foot, 0.02);
+    for (let i = -1; i <= 1; i++) {
+      mesh(shin, GEO.sphere, belly, [i * 0.062 * s, -0.17 * s, 0.23 * s], [0.048 * s, 0.042 * s, 0.055 * s]);
+    }
+    shins.push(shin);
   }
 
-  // Cola segmentada, con las rayas alternadas
-  const tail = g(body, 0, 0.02 * s, -0.44 * s * fat);
+  // ── Cola ───────────────────────────────────────────────────────────────
+  const tail = g(body, 0, -0.12 * s, -0.42 * s * fat);
   let seg: THREE.Object3D = tail;
-  for (let i = 0; i < 5; i++) {
-    const nxt = g(seg, 0, 0, -0.13 * s);
+  for (let i = 0; i < 6; i++) {
+    const nxt = g(seg, 0, 0, -0.12 * s);
     mesh(
       nxt,
       GEO.sphere,
       i % 2 === 0 ? plain : dark,
       [0, 0, 0],
-      [(0.085 - i * 0.008) * s, (0.085 - i * 0.008) * s, 0.09 * s],
+      [(0.085 - i * 0.007) * s, (0.085 - i * 0.007) * s, 0.09 * s],
     );
     seg = nxt;
   }
@@ -204,17 +277,23 @@ export function buildCat(opts: CatOptions): CritterRig {
     root,
     body,
     head,
+    neck,
     armL,
     armR,
+    forearmL: forearms[0],
+    forearmR: forearms[1],
     legL,
     legR,
+    shinL: shins[0],
+    shinR: shins[1],
     tail,
     earL,
     earR,
     hand,
+    bodyRestY: 0.78 * s,
     extras: { torso, skull },
     materials: mats,
-    height: 1.5 * s,
+    height: 1.55 * s,
     radius: 0.46 * s * fat,
   };
 }
@@ -285,10 +364,16 @@ export function buildDeedee(withOutline = true): CritterRig {
   });
   const plain = createCelMaterial({ color: 0xd8935a, bands: 3 });
   const belly = createCelMaterial({ color: 0xf3d2a8, bands: 3 });
-  const capeMat = createCelMaterial({ color: 0x140f1c, bands: 2, side: THREE.DoubleSide });
-  const helmMat = createCelMaterial({ color: 0xffffff, bands: 3, map: helmetTexture(0x8a2be2), emissive: 0.22, rim: 0xc040ff });
-  const glass = createCelMaterial({ color: 0x40ffe0, bands: 2, emissive: 0.6, opacity: 0.8, transparent: true, rim: 0x40ffe0 });
-  // Cara con la lengua fuera y el ceño marcado: sus dos rasgos de carácter
+  const capeMat = createCelMaterial({ color: 0x1a1226, bands: 2, side: THREE.DoubleSide });
+  const capeLining = createCelMaterial({ color: 0x8a1030, bands: 2, side: THREE.DoubleSide });
+  const helmMat = createCelMaterial({
+    color: 0xffffff,
+    bands: 3,
+    map: helmetTexture(0x9b3ff0),
+    emissive: 0.2,
+    rim: 0xc060ff,
+  });
+  const glass = createCelMaterial({ color: 0x40ffe0, bands: 2, emissive: 0.55, opacity: 0.82, transparent: true, rim: 0x40ffe0 });
   const faceMat = createCelMaterial({
     color: 0xffffff,
     bands: 3,
@@ -296,60 +381,87 @@ export function buildDeedee(withOutline = true): CritterRig {
       faceTexture({ fur: 0xd8935a, belly: 0xf3d2a8, eye: 0x2a1a10, kind: 'dog', angry: 1, tongue: true }),
     ),
   });
-  mats.push(fur, plain, belly, capeMat, helmMat, glass, faceMat);
+  mats.push(fur, plain, belly, capeMat, capeLining, helmMat, glass, faceMat);
 
   const root = new THREE.Group();
-  const s = 0.62; // muy pequeño frente a Benito
+  const s = 0.68; // diminuto frente a Benito: el contraste es intencionado
 
-  const body = g(root, 0, 0.5 * s, 0);
-  const torso = mesh(body, GEO.sphere, fur, [0, 0, 0], [0.3 * s, 0.33 * s, 0.36 * s]);
-  if (withOutline) outline(torso, 0.025);
-  mesh(body, GEO.sphere, belly, [0, -0.05 * s, 0.26 * s], [0.19 * s, 0.22 * s, 0.16 * s]);
+  // Torso pequeño y estrecho, de chihuahua
+  const torsoGeo = latheBody([
+    [0.03, -0.28],
+    [0.16, -0.27],
+    [0.21, -0.16],
+    [0.22, 0.0],
+    [0.2, 0.14],
+    [0.13, 0.24],
+    [0.03, 0.27],
+  ]);
+  const body = g(root, 0, 0.62 * s, 0);
+  const torso = mesh(body, torsoGeo, fur, [0, 0, 0], [s, s, s * 0.95]);
+  if (withOutline) outline(torso, 0.024);
+  mesh(body, GEO.sphere, belly, [0, -0.04 * s, 0.18 * s], [0.14 * s, 0.18 * s, 0.1 * s]);
 
-  const head = g(body, 0, 0.46 * s, 0.05 * s);
-  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.42 * s, 0.42 * s, 0.38 * s]);
-  if (withOutline) outline(skull, 0.025);
-  // Hocico puntiagudo de chihuahua, lo único que sí necesita volumen
-
+  const neck = g(body, 0, 0.26 * s, 0.01 * s);
+  const head = g(neck, 0, 0.18 * s, 0.02 * s);
+  // Cabeza grande respecto al cuerpo: acentúa lo cómico del personaje
+  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.44 * s, 0.42 * s, 0.4 * s]);
+  if (withOutline) outline(skull, 0.026);
+  // Morro puntiagudo, rasgo de la raza
+  mesh(head, GEO.cone, belly, [0, -0.16 * s, 0.3 * s], [0.11 * s, 0.16 * s, 0.11 * s], [Math.PI / 2.05, 0, 0]);
 
   // Orejas enormes: su silueta más reconocible
-  const earL = g(head, -0.27 * s, 0.24 * s, -0.02 * s);
-  const earR = g(head, 0.27 * s, 0.24 * s, -0.02 * s);
+  const earL = g(head, -0.3 * s, 0.26 * s, -0.02 * s);
+  const earR = g(head, 0.3 * s, 0.26 * s, -0.02 * s);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    const e = mesh(ear, GEO.cone, plain, [0, 0.18 * s, 0], [0.17 * s, 0.44 * s, 0.07 * s], [0, 0, sx * 0.35]);
-    if (withOutline) outline(e, 0.02);
-    mesh(ear, GEO.cone, belly, [0, 0.17 * s, 0.03 * s], [0.1 * s, 0.33 * s, 0.03 * s], [0, 0, sx * 0.35]);
+    const e = mesh(ear, GEO.cone, plain, [0, 0.22 * s, 0], [0.19 * s, 0.5 * s, 0.08 * s], [0, 0, sx * 0.36]);
+    if (withOutline) outline(e, 0.022);
+    mesh(ear, GEO.cone, belly, [0, 0.21 * s, 0.035 * s], [0.11 * s, 0.38 * s, 0.03 * s], [0, 0, sx * 0.36]);
   }
 
   // Casco de Potencia Canina Avanzado
-  const helmet = g(head, 0, 0.22 * s, 0);
-  const dome = mesh(helmet, GEO.sphere, helmMat, [0, 0.06 * s, 0], [0.38 * s, 0.28 * s, 0.36 * s]);
-  if (withOutline) outline(dome, 0.022);
-  mesh(helmet, GEO.torus, helmMat, [0, 0.02 * s, 0], [0.38 * s, 0.38 * s, 0.38 * s], [Math.PI / 2, 0, 0]);
-  const core = mesh(helmet, GEO.sphere, glass, [0, 0.22 * s, 0], [0.14 * s, 0.16 * s, 0.14 * s]);
+  const helmet = g(head, 0, 0.24 * s, 0);
+  const dome = mesh(helmet, GEO.sphere, helmMat, [0, 0.07 * s, 0], [0.4 * s, 0.3 * s, 0.38 * s]);
+  if (withOutline) outline(dome, 0.024);
+  mesh(helmet, GEO.torus, helmMat, [0, 0.02 * s, 0], [0.4 * s, 0.4 * s, 0.4 * s], [Math.PI / 2, 0, 0]);
+  const core = mesh(helmet, GEO.sphere, glass, [0, 0.24 * s, 0], [0.15 * s, 0.17 * s, 0.15 * s]);
   for (const sx of [-1, 1]) {
-    mesh(helmet, GEO.cylinder, glass, [sx * 0.32 * s, 0.13 * s, 0], [0.03 * s, 0.3 * s, 0.03 * s], [0, 0, sx * 0.4]);
+    mesh(helmet, GEO.cylinder, glass, [sx * 0.34 * s, 0.14 * s, 0], [0.03 * s, 0.32 * s, 0.03 * s], [0, 0, sx * 0.42]);
+    mesh(helmet, GEO.sphere, glass, [sx * 0.42 * s, 0.28 * s, 0], [0.05 * s, 0.05 * s, 0.05 * s]);
   }
 
-  const cape = g(body, 0, 0.2 * s, -0.24 * s);
-  mesh(cape, GEO.cone, capeMat, [0, -0.34 * s, -0.05 * s], [0.52 * s, 0.85 * s, 0.36 * s], [0.22, 0, 0]);
+  // Capa con forro rojo: se ve al girarse
+  const cape = g(body, 0, 0.18 * s, -0.2 * s);
+  mesh(cape, GEO.cone, capeMat, [0, -0.36 * s, -0.06 * s], [0.5 * s, 0.86 * s, 0.34 * s], [0.2, 0, 0]);
+  mesh(cape, GEO.cone, capeLining, [0, -0.35 * s, -0.04 * s], [0.44 * s, 0.8 * s, 0.28 * s], [0.2, 0, 0]);
+  mesh(cape, GEO.torus, capeLining, [0, 0.02 * s, 0.02 * s], [0.2 * s, 0.2 * s, 0.4 * s], [Math.PI / 2, 0, 0]);
 
-  const armL = g(body, -0.26 * s, 0.1 * s, 0);
-  const armR = g(body, 0.26 * s, 0.1 * s, 0);
+  const armL = g(body, -0.21 * s, 0.12 * s, 0);
+  const armR = g(body, 0.21 * s, 0.12 * s, 0);
+  const forearms: THREE.Group[] = [];
   for (const arm of [armL, armR]) {
-    mesh(arm, GEO.capsule, plain, [0, -0.14 * s, 0], [0.06 * s, 0.12 * s, 0.06 * s]);
+    mesh(arm, GEO.capsule, plain, [0, -0.1 * s, 0], [0.055 * s, 0.08 * s, 0.055 * s]);
+    const forearm = g(arm, 0, -0.2 * s, 0);
+    mesh(forearm, GEO.capsule, plain, [0, -0.07 * s, 0], [0.05 * s, 0.07 * s, 0.05 * s]);
+    mesh(forearm, GEO.sphere, belly, [0, -0.16 * s, 0], [0.062 * s, 0.06 * s, 0.062 * s]);
+    forearms.push(forearm);
   }
-  const legL = g(body, -0.15 * s, -0.28 * s, 0);
-  const legR = g(body, 0.15 * s, -0.28 * s, 0);
+
+  const legL = g(body, -0.13 * s, -0.25 * s, 0);
+  const legR = g(body, 0.13 * s, -0.25 * s, 0);
+  const shins: THREE.Group[] = [];
   for (const leg of [legL, legR]) {
-    mesh(leg, GEO.capsule, plain, [0, -0.12 * s, 0], [0.065 * s, 0.12 * s, 0.065 * s]);
-    mesh(leg, GEO.sphere, belly, [0, -0.26 * s, 0.04 * s], [0.08 * s, 0.05 * s, 0.11 * s]);
+    mesh(leg, GEO.capsule, plain, [0, -0.07 * s, 0], [0.06 * s, 0.07 * s, 0.06 * s]);
+    const shin = g(leg, 0, -0.17 * s, 0);
+    mesh(shin, GEO.capsule, plain, [0, -0.05 * s, 0], [0.055 * s, 0.05 * s, 0.055 * s]);
+    mesh(shin, GEO.sphere, belly, [0, -0.14 * s, 0.04 * s], [0.08 * s, 0.055 * s, 0.12 * s]);
+    shins.push(shin);
   }
-  const tail = g(body, 0, 0.1 * s, -0.32 * s);
-  mesh(tail, GEO.capsule, plain, [0, 0.1 * s, -0.04 * s], [0.04 * s, 0.14 * s, 0.04 * s], [0.9, 0, 0]);
+
+  const tail = g(body, 0, 0.08 * s, -0.24 * s);
+  mesh(tail, GEO.capsule, plain, [0, 0.1 * s, -0.04 * s], [0.038 * s, 0.13 * s, 0.038 * s], [0.95, 0, 0]);
 
   root.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;
@@ -359,17 +471,23 @@ export function buildDeedee(withOutline = true): CritterRig {
     root,
     body,
     head,
+    neck,
     armL,
     armR,
+    forearmL: forearms[0],
+    forearmR: forearms[1],
     legL,
     legR,
+    shinL: shins[0],
+    shinR: shins[1],
     tail,
     earL,
     earR,
-    hand: armR,
+    hand: forearms[1],
+    bodyRestY: 0.62 * s,
     extras: { helmet, cape, core, dome },
     materials: mats,
-    height: 0.95,
+    height: 1.0,
     radius: 0.3,
   };
 }
@@ -401,7 +519,6 @@ export function buildPet(color: string, withOutline = true): PetRig {
     map: faceForward(furTexture({ base: c.fur, belly: c.furAlt, stripe: c.furAlt })),
   });
   const plain = createCelMaterial({ color: c.fur, bands: 3 });
-  // Los pantalones de color identifican el tipo: llevan trama y costura
   const pants = createCelMaterial({ color: 0xffffff, bands: 3, map: clothTexture(c.pants), mapRepeat: 2 });
   const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
   const skin = createCelMaterial({ color: 0xf0cbb0, bands: 2 });
@@ -415,49 +532,81 @@ export function buildPet(color: string, withOutline = true): PetRig {
   mats.push(fur, plain, pants, dark, skin, helmetMat, lightMat, faceMat);
 
   const root = new THREE.Group();
-  const s = 0.78;
+  const s = 0.82;
 
-  const body = g(root, 0, 0.5 * s, 0);
-  const torso = mesh(body, GEO.capsule, fur, [0, 0, 0], [0.26 * s, 0.2 * s, 0.26 * s]);
-  if (withOutline) outline(torso, 0.024);
-  mesh(body, GEO.sphere, skin, [0, -0.02 * s, 0.22 * s], [0.17 * s, 0.2 * s, 0.12 * s]);
-  const trousers = mesh(body, GEO.capsule, pants, [0, -0.3 * s, 0], [0.27 * s, 0.14 * s, 0.27 * s]);
-  if (withOutline) outline(trousers, 0.02);
+  // Torso torneado: hombros marcados y cintura, no una cápsula lisa
+  const torsoGeo = latheBody([
+    [0.03, -0.3],
+    [0.19, -0.29],
+    [0.24, -0.18],
+    [0.25, -0.02],
+    [0.27, 0.12],
+    [0.24, 0.22],
+    [0.15, 0.29],
+    [0.03, 0.31],
+  ]);
+  const body = g(root, 0, 0.72 * s, 0);
+  const torso = mesh(body, torsoGeo, fur, [0, 0, 0], [s, s, s * 0.92]);
+  if (withOutline) outline(torso, 0.026);
+  mesh(body, GEO.sphere, skin, [0, 0.02 * s, 0.2 * s], [0.15 * s, 0.17 * s, 0.1 * s]);
 
-  const head = g(body, 0, 0.42 * s, 0.02 * s);
-  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.33 * s, 0.31 * s, 0.31 * s]);
-  if (withOutline) outline(skull, 0.024);
+  // Pantalones de color: la señal que identifica el tipo de mascota
+  const trousers = mesh(body, GEO.capsule, pants, [0, -0.3 * s, 0], [0.24 * s, 0.11 * s, 0.24 * s]);
+  if (withOutline) outline(trousers, 0.022);
+  mesh(body, GEO.torus, dark, [0, -0.19 * s, 0], [0.25 * s, 0.25 * s, 0.5 * s], [Math.PI / 2, 0, 0]);
 
-  const earL = g(head, -0.3 * s, 0.08 * s, 0);
-  const earR = g(head, 0.3 * s, 0.08 * s, 0);
+  const neck = g(body, 0, 0.3 * s, 0.01 * s);
+  const head = g(neck, 0, 0.14 * s, 0.01 * s);
+  const skull = mesh(head, GEO.sphere, faceMat, [0, 0, 0], [0.34 * s, 0.32 * s, 0.32 * s]);
+  if (withOutline) outline(skull, 0.026);
+  // Hocico: las mascotas son perrillos, necesitan morro
+  mesh(head, GEO.sphere, skin, [0, -0.1 * s, 0.28 * s], [0.13 * s, 0.1 * s, 0.1 * s]);
+
+  const earL = g(head, -0.3 * s, 0.1 * s, 0);
+  const earR = g(head, 0.3 * s, 0.1 * s, 0);
   for (const [ear, sx] of [
     [earL, -1],
     [earR, 1],
   ] as const) {
-    mesh(ear, GEO.sphere, plain, [0, -0.07 * s, 0], [0.1 * s, 0.18 * s, 0.07 * s], [0, 0, sx * 0.2]);
+    const e = mesh(ear, GEO.sphere, plain, [0, -0.09 * s, 0], [0.1 * s, 0.2 * s, 0.07 * s], [0, 0, sx * 0.22]);
+    if (withOutline) outline(e, 0.02);
   }
 
-  // Casco con la luz de estado, que es la señal de juego más importante
-  const helmet = g(head, 0, 0.16 * s, 0);
-  const dome = mesh(helmet, GEO.sphere, helmetMat, [0, 0.05 * s, 0], [0.35 * s, 0.25 * s, 0.33 * s]);
-  if (withOutline) outline(dome, 0.02);
-  mesh(helmet, GEO.torus, helmetMat, [0, 0, 0], [0.34 * s, 0.34 * s, 0.34 * s], [Math.PI / 2, 0, 0]);
-  const helmetLight = mesh(helmet, GEO.sphere, lightMat, [0, 0.23 * s, 0.06 * s], [0.1 * s, 0.1 * s, 0.1 * s]);
-  mesh(helmet, GEO.cylinder, helmetMat, [0, 0.16 * s, 0.04 * s], [0.02 * s, 0.14 * s, 0.02 * s]);
+  const helmet = g(head, 0, 0.17 * s, 0);
+  const dome = mesh(helmet, GEO.sphere, helmetMat, [0, 0.05 * s, 0], [0.36 * s, 0.26 * s, 0.34 * s]);
+  if (withOutline) outline(dome, 0.022);
+  mesh(helmet, GEO.torus, helmetMat, [0, 0, 0], [0.35 * s, 0.35 * s, 0.35 * s], [Math.PI / 2, 0, 0]);
+  const helmetLight = mesh(helmet, GEO.sphere, lightMat, [0, 0.24 * s, 0.06 * s], [0.11 * s, 0.11 * s, 0.11 * s]);
+  mesh(helmet, GEO.cylinder, helmetMat, [0, 0.17 * s, 0.04 * s], [0.022 * s, 0.14 * s, 0.022 * s]);
 
-  const armL = g(body, -0.28 * s, 0.16 * s, 0);
-  const armR = g(body, 0.28 * s, 0.16 * s, 0);
-  for (const arm of [armL, armR]) {
-    mesh(arm, GEO.capsule, plain, [0, -0.16 * s, 0], [0.07 * s, 0.14 * s, 0.07 * s]);
-    mesh(arm, GEO.sphere, skin, [0, -0.34 * s, 0], [0.08 * s, 0.08 * s, 0.08 * s]);
+  const armL = g(body, -0.28 * s, 0.14 * s, 0);
+  const armR = g(body, 0.28 * s, 0.14 * s, 0);
+  const forearms: THREE.Group[] = [];
+  for (const [arm, sx] of [
+    [armL, -1],
+    [armR, 1],
+  ] as const) {
+    mesh(arm, GEO.sphere, plain, [0, 0, 0], [0.095 * s, 0.095 * s, 0.095 * s]);
+    mesh(arm, GEO.capsule, plain, [0, -0.11 * s, 0], [0.07 * s, 0.09 * s, 0.07 * s], [0, 0, sx * 0.06]);
+    const forearm = g(arm, 0, -0.23 * s, 0);
+    mesh(forearm, GEO.capsule, plain, [0, -0.08 * s, 0], [0.062 * s, 0.08 * s, 0.062 * s]);
+    mesh(forearm, GEO.sphere, skin, [0, -0.19 * s, 0], [0.085 * s, 0.08 * s, 0.085 * s]);
+    forearms.push(forearm);
   }
-  const legL = g(body, -0.14 * s, -0.36 * s, 0);
-  const legR = g(body, 0.14 * s, -0.36 * s, 0);
+
+  const legL = g(body, -0.15 * s, -0.38 * s, 0);
+  const legR = g(body, 0.15 * s, -0.38 * s, 0);
+  const shins: THREE.Group[] = [];
   for (const leg of [legL, legR]) {
-    mesh(leg, GEO.capsule, pants, [0, -0.1 * s, 0], [0.09 * s, 0.1 * s, 0.09 * s]);
-    mesh(leg, GEO.sphere, dark, [0, -0.26 * s, 0.05 * s], [0.1 * s, 0.06 * s, 0.13 * s]);
+    mesh(leg, GEO.capsule, pants, [0, -0.08 * s, 0], [0.09 * s, 0.07 * s, 0.09 * s]);
+    const shin = g(leg, 0, -0.19 * s, 0);
+    mesh(shin, GEO.capsule, plain, [0, -0.05 * s, 0], [0.075 * s, 0.05 * s, 0.075 * s]);
+    const foot = mesh(shin, GEO.sphere, dark, [0, -0.15 * s, 0.06 * s], [0.11 * s, 0.065 * s, 0.17 * s]);
+    if (withOutline) outline(foot, 0.018);
+    shins.push(shin);
   }
-  const tail = g(body, 0, 0.06 * s, -0.28 * s);
+
+  const tail = g(body, 0, 0.04 * s, -0.26 * s);
   mesh(tail, GEO.capsule, plain, [0, 0.08 * s, -0.06 * s], [0.05 * s, 0.12 * s, 0.05 * s], [0.7, 0, 0]);
 
   root.traverse((o) => {
@@ -468,18 +617,24 @@ export function buildPet(color: string, withOutline = true): PetRig {
     root,
     body,
     head,
+    neck,
     armL,
     armR,
+    forearmL: forearms[0],
+    forearmR: forearms[1],
     legL,
     legR,
+    shinL: shins[0],
+    shinR: shins[1],
     tail,
     earL,
     earR,
-    hand: armR,
+    hand: forearms[1],
+    bodyRestY: 0.72 * s,
     extras: { helmet, dome },
     materials: mats,
-    height: 1.1,
-    radius: 0.32,
+    height: 1.2,
+    radius: 0.33,
     helmetLight,
     helmetMat: lightMat,
   };
