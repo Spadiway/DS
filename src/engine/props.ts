@@ -408,9 +408,18 @@ export function createPropMesh(
           `#include <clipping_planes_fragment>
            // Disolución por ruido: el decorado cercano no debe tapar la acción
            if (vCamDist < uFadeNear) {
-             float keep = smoothstep(0.15, 1.0, vCamDist / uFadeNear);
-             float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-             if (keep < n) discard;
+             float keep = smoothstep(0.1, 1.0, vCamDist / uFadeNear);
+             // Matriz de Bayer 4x4: patrón fijo en pantalla, así la disolución
+             // no hierve al mover la cámara como hacía el ruido aleatorio.
+             ivec2 px = ivec2(mod(gl_FragCoord.xy, 4.0));
+             int idx = px.x + px.y * 4;
+             float bayer[16];
+             bayer[0]=0.0;  bayer[1]=8.0;  bayer[2]=2.0;  bayer[3]=10.0;
+             bayer[4]=12.0; bayer[5]=4.0;  bayer[6]=14.0; bayer[7]=6.0;
+             bayer[8]=3.0;  bayer[9]=11.0; bayer[10]=1.0; bayer[11]=9.0;
+             bayer[12]=15.0;bayer[13]=7.0; bayer[14]=13.0;bayer[15]=5.0;
+             float threshold = bayer[idx] / 16.0;
+             if (keep < threshold) discard;
            }`,
         );
     };

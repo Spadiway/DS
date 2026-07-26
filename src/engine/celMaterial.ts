@@ -10,6 +10,7 @@
  * de vecino más próximo; el contorno, con casco invertido.
  */
 import * as THREE from 'three';
+import { causticsTexture, cloudTexture } from './textures';
 
 // Con materiales estándar, la gestión de color de Three es la correcta:
 // los colores se declaran en sRGB y se convierten al espacio lineal de trabajo.
@@ -162,6 +163,7 @@ export function createLiquidMaterial(color: number, emissive: number, opacity: n
   mat.userData.liquid = true;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uCaustics = { value: causticsTexture() };
     mat.userData.shader = shader;
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -181,6 +183,7 @@ export function createLiquidMaterial(color: number, emissive: number, opacity: n
         '#include <common>',
         `#include <common>
          uniform float uTime;
+         uniform sampler2D uCaustics;
          varying vec3 vWorld;`,
       )
       .replace(
@@ -188,7 +191,15 @@ export function createLiquidMaterial(color: number, emissive: number, opacity: n
         `#include <dithering_fragment>
          // Espuma en bandas: agua de dibujos, no reflejo realista
          float ripple = sin(vWorld.x * 0.5 + uTime * 2.0) * cos(vWorld.z * 0.42 - uTime * 1.6);
-         gl_FragColor.rgb += vec3(0.28) * smoothstep(0.6, 0.95, ripple);`,
+         gl_FragColor.rgb += vec3(0.28) * smoothstep(0.6, 0.95, ripple);
+
+         // Cáusticas: dos capas de red luminosa a distinta deriva, la marca de
+         // agua de los juegos de esta época.
+         vec2 cuv = vWorld.xz * 0.055;
+         float k1 = texture2D(uCaustics, cuv + vec2(uTime * 0.021, uTime * 0.013)).r;
+         float k2 = texture2D(uCaustics, cuv * 1.7 - vec2(uTime * 0.017, uTime * 0.024)).r;
+         float caustic = max(0.0, (k1 + k2) - 1.05);
+         gl_FragColor.rgb += vec3(0.55, 0.75, 0.7) * caustic * 1.5;`,
       );
     // Posición de mundo para la espuma
     shader.vertexShader = shader.vertexShader
@@ -292,14 +303,17 @@ export function createSkyDome(zenith: number, horizon: number, radius = 520): TH
       uTop: { value: new THREE.Color(zenith) },
       uBottom: { value: new THREE.Color(horizon) },
       uTime: { value: 0 },
+      uClouds: { value: cloudTexture() },
     },
     vertexShader: /* glsl */ `
       precision highp float;
       varying float vHeight01;
-      varying vec2 vSwirl;
+      varying vec2 vUv;
       void main() {
-        vHeight01 = clamp(normalize(position).y * 0.5 + 0.5, 0.0, 1.0);
-        vSwirl = position.xz / 260.0;
+        vec3 n = normalize(position);
+        vHeight01 = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+        // Coordenada panorámica: las nubes envuelven el horizonte
+        vUv = vec2(atan(n.z, n.x) / 6.2831853 + 0.5, clamp(n.y, 0.0, 1.0));
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -308,8 +322,9 @@ export function createSkyDome(zenith: number, horizon: number, radius = 520): TH
       uniform vec3 uTop;
       uniform vec3 uBottom;
       uniform float uTime;
+      uniform sampler2D uClouds;
       varying float vHeight01;
-      varying vec2 vSwirl;
+      varying vec2 vUv;
 
       float band(float x, float n) { return floor(x * n) / n; }
 
@@ -317,13 +332,20 @@ export function createSkyDome(zenith: number, horizon: number, radius = 520): TH
         float h = vHeight01;
         float b = band(h, 9.0);
         h = mix(h, b, 0.45);
-        vec3 col = mix(uBottom, uTop, pow(clamp(h, 0.0, 1.0), 0.5));
+        vec3 col = mix(uBottom, uTop, pow(clamp(h, 0.0, 1.0), 0.32));
 
-        // Nubes largas y planas, en capas, al estilo de fondo pintado
-        float c1 = sin(vSwirl.x * 2.4 + uTime * 0.04) * cos(vSwirl.y * 1.7 - uTime * 0.03);
-        float c2 = sin(vSwirl.x * 5.1 - uTime * 0.06) * cos(vSwirl.y * 3.9 + uTime * 0.05);
-        float clouds = smoothstep(0.5, 0.9, c1) * 0.75 + smoothstep(0.65, 0.95, c2) * 0.45;
-        col = mix(col, col + vec3(0.16), clouds * smoothstep(0.42, 0.8, vHeight01));
+        // Dos capas de cúmulos a distinta velocidad y escala: da profundidad
+        // al cielo sin geometría, como los fondos pintados de la época.
+        float band1 = clamp((vUv.y - 0.10) / 0.4, 0.0, 1.0);
+        float band2 = clamp((vUv.y - 0.24) / 0.46, 0.0, 1.0);
+        float a1 = texture2D(uClouds, vec2(vUv.x * 2.0 + uTime * 0.004, band1)).a;
+        float a2 = texture2D(uClouds, vec2(vUv.x * 1.15 - uTime * 0.0022 + 0.37, band2)).a;
+
+        // Se desvanecen contra el horizonte y hacia el cenit
+        float fade = smoothstep(0.0, 0.22, vHeight01) * (1.0 - smoothstep(0.78, 1.0, vHeight01));
+        float clouds = clamp(a1 * 0.85 + a2 * 0.6, 0.0, 1.0) * fade;
+
+        col = mix(col, vec3(0.99, 0.99, 1.0), clouds * 0.92);
 
         gl_FragColor = vec4(col, 1.0);
       }

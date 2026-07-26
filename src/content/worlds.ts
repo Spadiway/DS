@@ -114,7 +114,7 @@ const W1: LevelSpec[] = [
     terrain: { amplitude: 15, frequency: 0.016, octaves: 4, plateau: 0.35, islandFalloff: 0.75 },
     liquid: { kind: 'water', level: -2.5, damage: 0 },
     palette: pal({
-      sky: [0xffd79a, 0x7fb2e8],
+      sky: [0xcfe9ff, 0x3f8fdc],
       ground: 0x8fbf5a,
       groundAlt: 0xc2a85f,
       cliff: 0x8a6d4a,
@@ -122,6 +122,7 @@ const W1: LevelSpec[] = [
       propAlt: 0xd8c98f,
       liquid: 0x3fa8d8,
       fogDensity: 0.0035,
+      fog: 0xd8ecff,
     }),
     props: [
       { kind: 'palm', count: 26, scale: [1, 1.6] },
@@ -242,7 +243,7 @@ const W2: LevelSpec[] = [
     terrain: { amplitude: 12, frequency: 0.018, octaves: 4, plateau: 0.35, islandFalloff: 0.72 },
     liquid: { kind: 'water', level: -1.5, damage: 0 },
     palette: pal({
-      sky: [0xbfe08a, 0x24512f],
+      sky: [0xd8eea8, 0x2f6b3a],
       ground: 0x2f6b34,
       groundAlt: 0x53853a,
       cliff: 0x4d4535,
@@ -379,7 +380,7 @@ const W3: LevelSpec[] = [
     terrain: { amplitude: 11, frequency: 0.014, octaves: 4, plateau: 0.5, islandFalloff: 0.62 },
     liquid: { kind: 'water', level: 0.5, damage: 0 },
     palette: pal({
-      sky: [0x9fe0ff, 0x2f9fd8],
+      sky: [0xd8f2ff, 0x2f9fd8],
       ground: 0xf0dfa8,
       groundAlt: 0xd8c07a,
       cliff: 0xb09a6a,
@@ -521,7 +522,7 @@ const W4: LevelSpec[] = [
     liquid: { kind: 'water', level: -1, damage: 12 },
     slippery: true,
     palette: pal({
-      sky: [0xdff2ff, 0x8fbfe0],
+      sky: [0xeaf8ff, 0x6fa8d8],
       ground: 0xeaf6ff,
       groundAlt: 0xc4dff0,
       cliff: 0x9fc0d8,

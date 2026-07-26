@@ -636,6 +636,108 @@ export function helmetTexture(base: number): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Cáusticas del agua: la red de luz que se ve en el fondo de las piscinas.
+ * Es lo que distingue el agua de aquellos juegos de un plano azul liso.
+ */
+export function causticsTexture(): THREE.CanvasTexture {
+  const key = 'caustics';
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const size = 128;
+  const { c, ctx } = canvas(size);
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, size, size);
+  ctx.lineCap = 'round';
+  // Celdas irregulares de luz, replicadas por los bordes para poder repetir
+  for (let i = 0; i < 46; i++) {
+    const cx = Math.random() * size;
+    const cy = Math.random() * size;
+    const r = 8 + Math.random() * 20;
+    for (const [ox, oy] of [
+      [0, 0],
+      [size, 0],
+      [-size, 0],
+      [0, size],
+      [0, -size],
+    ]) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.16 + Math.random() * 0.2})`;
+      ctx.lineWidth = 2 + Math.random() * 4;
+      ctx.beginPath();
+      for (let k = 0; k <= 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const rr = r * (0.72 + Math.sin(a * 3 + i) * 0.28);
+        const x = cx + ox + Math.cos(a) * rr;
+        const y = cy + oy + Math.sin(a) * rr;
+        if (k === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+  const tex = finish(c, { repeat: 1 });
+  cache.set(key, tex);
+  return tex;
+}
+
+/**
+ * Nubes de fondo pintado: cúmulos blancos y gordos, no bruma. Se dibujan en una
+ * banda que la cúpula del cielo coloca sobre el horizonte.
+ */
+export function cloudTexture(): THREE.CanvasTexture {
+  const key = 'clouds';
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const w = 512;
+  const h = 128;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, w, h);
+
+  const puff = (x: number, y: number, r: number, alpha: number) => {
+    for (const ox of [0, w, -w]) {
+      const grd = ctx.createRadialGradient(x + ox, y, r * 0.25, x + ox, y, r);
+      grd.addColorStop(0, `rgba(255,255,255,${alpha})`);
+      grd.addColorStop(0.62, `rgba(255,255,255,${alpha * 0.85})`);
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(x + ox, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+
+  // Cada nube es un racimo de bolas: base plana y cúpula abultada
+  for (let i = 0; i < 13; i++) {
+    const cx = Math.random() * w;
+    const cy = h * (0.36 + Math.random() * 0.4);
+    const scale = 0.6 + Math.random() * 0.9;
+    const lobes = 4 + Math.floor(Math.random() * 4);
+    for (let k = 0; k < lobes; k++) {
+      const t = k / (lobes - 1) - 0.5;
+      puff(cx + t * 62 * scale, cy - Math.cos(t * Math.PI) * 13 * scale, (16 + Math.random() * 15) * scale, 0.92);
+    }
+    // Sombra suave en la base
+    for (let k = 0; k < lobes; k++) {
+      const t = k / (lobes - 1) - 0.5;
+      puff(cx + t * 58 * scale, cy + 11 * scale, 13 * scale, 0.3);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  cache.set(key, tex);
+  return tex;
+}
+
 export function disposeTextures(): void {
   for (const t of cache.values()) t.dispose();
   cache.clear();

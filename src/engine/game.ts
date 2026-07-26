@@ -143,7 +143,7 @@ export class Game {
     // ACES comprime los altos: sin él, los colores saturados del cel shading
     // se queman en cuanto entra la luz directa más el brillo emisivo.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.0;
 
     this.rig = createCameraRig(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     this.player = createPlayer(q.outlines);
@@ -237,16 +237,22 @@ export class Game {
     const sunColor = new THREE.Color(spec.palette.sun);
     const ambient = new THREE.Color(spec.palette.ambient);
     this.sun.color.copy(sunColor);
-    this.sun.intensity = spec.palette.sunIntensity;
     this.hemi.color.copy(new THREE.Color(spec.palette.sky[1]));
     this.hemi.groundColor.copy(new THREE.Color(spec.palette.ground));
-    this.hemi.intensity = 0.85;
+    /**
+     * Presupuesto de luz. Las cuatro fuentes deben sumar en torno a 1.6 sobre
+     * una cara iluminada de frente; por encima de eso el tonemapping ya no
+     * salva los tonos claros y las superficies horizontales se queman a blanco
+     * (era lo que pasaba con las tarimas de madera vistas desde arriba).
+     */
+    this.sun.intensity = spec.palette.sunIntensity * 0.62;
+    this.hemi.intensity = 0.3;
     this.ambient.color.copy(ambient).lerp(new THREE.Color(0xffffff), 0.3);
-    // Las paletas ya claras necesitan menos relleno; las oscuras, más
+    // Las paletas oscuras necesitan más relleno; las claras, menos
     const groundLum = new THREE.Color(spec.palette.ground).getHSL({ h: 0, s: 0, l: 0 }).l;
-    this.ambient.intensity = clamp(1.15 - groundLum * 0.9, 0.5, 1.05);
+    this.ambient.intensity = clamp(0.5 - groundLum * 0.28, 0.22, 0.48);
     this.fill.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xffffff), 0.4);
-    this.fill.intensity = 0.45;
+    this.fill.intensity = 0.2;
     updateCelLighting(new THREE.Vector3(0.42, 0.82, 0.36), sunColor, ambient, spec.palette.sunIntensity);
     // La niebla toma el color del horizonte para que el terreno se funda con el cielo
     updateCelFog(new THREE.Color(spec.palette.fog), spec.palette.fogDensity);

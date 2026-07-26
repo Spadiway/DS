@@ -21,6 +21,7 @@ export type MovingPlatform = {
   box: BoxCollider;
   mesh: THREE.Object3D;
   cap?: THREE.Object3D;
+  trim?: THREE.Object3D;
   origin: THREE.Vector3;
   axis: THREE.Vector3;
   amplitude: number;
@@ -437,13 +438,16 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   const platTopMat = createCelMaterial({
     color: 0xffffff,
     bands: 3,
-    map: plankTexture(spec.palette.propAlt),
+    map: plankTexture(mixHex(spec.palette.propAlt, 0x8a5a32, 0.62)),
     mapRepeat: 1,
   });
+  // Las móviles llevan la misma tarima; lo que las distingue es un friso
+  // luminoso en el canto, no ser una losa emisiva entera (que salía como una
+  // galleta gigante flotando).
   const platMovingMat = createCelMaterial({
     color: spec.palette.propAlt,
     bands: 3,
-    emissive: 0.5,
+    emissive: 0.55,
     rim: spec.palette.propAlt,
   });
   materials.push(platMat, platTopMat, platMovingMat);
@@ -458,6 +462,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
   const platGeo = new THREE.BoxGeometry(1, 1, 1);
   disposables.push(platGeo);
   const movingCaps: THREE.Mesh[] = [];
+  const movingTrims: THREE.Mesh[] = [];
 
   platformPts.forEach((p, idx) => {
     const isMoving = idx < spec.platforms.moving;
@@ -468,7 +473,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     const base = Math.max(groundH, spec.liquid.level + 0.5);
     const y = base + rngRange(rng, spec.platforms.minY, spec.platforms.maxY);
 
-    const m = new THREE.Mesh(platGeo, isMoving ? platMovingMat : platMat);
+    const m = new THREE.Mesh(platGeo, platMat);
     m.scale.set(w, th, d);
     m.position.set(p.x, y, p.z);
     m.castShadow = true;
@@ -476,12 +481,21 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     group.add(m);
 
     // Tarima superior: marca dónde se puede aterrizar
-    const cap = new THREE.Mesh(platGeo, isMoving ? platMovingMat : platTopMat);
-    cap.scale.set(w * 1.06, th * 0.34, d * 1.06);
+    const cap = new THREE.Mesh(platGeo, platTopMat);
+    cap.scale.set(w * 1.04, th * 0.34, d * 1.04);
     cap.position.set(p.x, y + th * 0.44, p.z);
     cap.receiveShadow = true;
     group.add(cap);
-    if (isMoving) movingCaps.push(cap);
+
+    if (isMoving) {
+      // Friso luminoso alrededor del canto
+      const trim = new THREE.Mesh(platGeo, platMovingMat);
+      trim.scale.set(w * 1.12, th * 0.22, d * 1.12);
+      trim.position.set(p.x, y - th * 0.12, p.z);
+      group.add(trim);
+      movingCaps.push(cap);
+      movingTrims.push(trim);
+    }
 
     // Postes de apoyo bajo las esquinas: dan lectura de estructura construida
     if (!isMoving) {
@@ -513,6 +527,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
         box,
         mesh: m,
         cap: movingCaps[movingCaps.length - 1],
+        trim: movingTrims[movingTrims.length - 1],
         origin: new THREE.Vector3(p.x, y, p.z),
         axis: vertical ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(Math.cos(rng() * 6.28), 0, Math.sin(rng() * 6.28)),
         amplitude: vertical ? rngRange(rng, 2.5, 6) : rngRange(rng, 4, 11),
@@ -983,5 +998,6 @@ export function updateMovingPlatforms(level: GeneratedLevel, time: number): void
     mp.box.center.set(nx, ny, nz);
     mp.mesh.position.set(nx, ny, nz);
     if (mp.cap) mp.cap.position.set(nx, ny + 0.38, nz);
+    if (mp.trim) mp.trim.position.set(nx, ny - 0.11, nz);
   }
 }
