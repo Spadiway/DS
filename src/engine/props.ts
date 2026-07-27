@@ -61,39 +61,76 @@ const p = (
  * formas grandes y claras, no detalle fino que el cel shading no puede mostrar.
  */
 const BUILDERS: Record<PropKind, () => Piece[]> = {
+  /**
+   * Palmera con frondas segmentadas.
+   *
+   * Cada fronda era un único cono aplastado: un rombo verde de más de un metro
+   * de lado, plantado casi horizontal a la altura de la cámara. Al pasar cerca
+   * de una palmera la pantalla se llenaba de cometas verdes planas. Ahora cada
+   * fronda son tres tramos cada vez más pequeños y más caídos, y bastante más
+   * estrechos, de modo que la silueta se curva y se lee como una hoja de palma
+   * aunque sigan siendo conos.
+   */
   palm: () => [
     p(CYL_TAPER, 'trunk', [0, 1.25, 0], [0.15, 1.25, 0.15], [0.1, 0, 0.08]),
     // Anillos del tronco
     ...Array.from({ length: 4 }, (_, i) =>
       p(CYL, 'trunk', [i * 0.05, 0.42 + i * 0.5, 0], [0.18 - i * 0.013, 0.05, 0.18 - i * 0.013]),
     ),
-    ...Array.from({ length: 7 }, (_, i) => {
-      const a = (i / 7) * Math.PI * 2;
-      return p(
-        C5,
-        i % 2 ? 'foliageDark' : 'foliage',
-        [Math.cos(a) * 0.62 + 0.22, 2.5 - (i % 2) * 0.1, Math.sin(a) * 0.62],
-        [0.26, 0.72, 0.12],
-        [Math.PI / 2 - 0.42, -a, 0],
-      );
-    }),
+    ...Array.from({ length: 8 }, (_, i) => {
+      const a = (i / 8) * Math.PI * 2;
+      const dark = i % 2 === 1;
+      const cx = Math.cos(a);
+      const cz = Math.sin(a);
+      // Tres tramos: nacen del cogollo y caen describiendo un arco
+      return [0, 1, 2].map((k) => {
+        const reach = 0.34 + k * 0.36;
+        const droop = 0.18 + k * 0.5;
+        return p(
+          C5,
+          dark ? 'foliageDark' : 'foliage',
+          [cx * reach + 0.22, 2.5 - (dark ? 0.08 : 0) - droop * 0.42, cz * reach],
+          [0.15 - k * 0.032, 0.42 - k * 0.07, 0.07 - k * 0.012],
+          [Math.PI / 2 - 0.42 + droop, -a, 0],
+        );
+      });
+    }).flat(),
     p(S, 'foliageDark', [0.22, 2.5, 0], [0.22, 0.18, 0.22]),
     p(S, 'accent', [0.34, 2.34, 0.1], [0.11, 0.11, 0.11]),
     p(S, 'accent', [0.14, 2.32, -0.12], [0.09, 0.09, 0.09]),
   ],
 
+  /**
+   * Helecho en dos coronas.
+   *
+   * Antes eran ocho conos anchos y largos: de cerca llenaban media pantalla
+   * de triángulos verdes planos, como cartulinas clavadas en el suelo. Ahora
+   * son frondas más numerosas, estrechas y cortas, en dos alturas y con
+   * inclinaciones distintas, que es lo que da la silueta plumosa de un
+   * helecho aunque cada fronda siga siendo un cono.
+   */
   fern: () => [
-    ...Array.from({ length: 8 }, (_, i) => {
-      const a = (i / 8) * Math.PI * 2;
+    ...Array.from({ length: 9 }, (_, i) => {
+      const a = (i / 9) * Math.PI * 2;
       return p(
         C5,
         i % 2 ? 'foliageDark' : 'foliage',
-        [Math.cos(a) * 0.36, 0.5, Math.sin(a) * 0.36],
-        [0.24, 1.0, 0.11],
-        [0.72, -a, 0],
+        [Math.cos(a) * 0.34, 0.34, Math.sin(a) * 0.34],
+        [0.13, 0.72, 0.07],
+        [0.95, -a, 0],
       );
     }),
-    p(S, 'foliageDark', [0, 0.12, 0], [0.18, 0.12, 0.18]),
+    ...Array.from({ length: 7 }, (_, i) => {
+      const a = ((i + 0.5) / 7) * Math.PI * 2;
+      return p(
+        C5,
+        i % 2 ? 'foliage' : 'foliageDark',
+        [Math.cos(a) * 0.2, 0.6, Math.sin(a) * 0.2],
+        [0.1, 0.6, 0.06],
+        [0.5, -a, 0],
+      );
+    }),
+    p(S, 'foliageDark', [0, 0.1, 0], [0.17, 0.11, 0.17]),
   ],
 
   pine: () => [
@@ -493,6 +530,8 @@ export function createPropMesh(
   }
 
   const im = new THREE.InstancedMesh(geo, mat, Math.max(1, instances.length));
+  // El nombre identifica el tipo en el inspector y en el arnés de pruebas
+  im.name = `prop:${kind}`;
   im.castShadow = opts.castShadow ?? true;
   im.receiveShadow = true;
 

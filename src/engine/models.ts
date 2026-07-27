@@ -301,18 +301,20 @@ export function buildCat(opts: CatOptions): CritterRig {
 /** Benito: gato gris atigrado, corpulento, ojos verdes brillantes. */
 export function buildBenito(withOutline = true): CritterRig {
   const rig = buildCat({
-    fur: 0x8f8f9c,
-    furAlt: 0x6a6a78,
+    // Pardo cálido en vez de gris azulado. Un gris frío sobre hierba y arena
+    // —los dos suelos más frecuentes— tiene casi el mismo valor que el fondo
+    // y el personaje se despega solo por el contorno.
+    fur: 0xa89686,
+    furAlt: 0x4a3f38,
     eye: 0x5cff8a,
-    belly: 0xe6e2dc,
+    belly: 0xf4ece0,
     fat: 1.32,
     scale: 1,
     eyeSize: 0.14,
     withOutline,
     stripes: true,
   });
-  // Collar de explorador con placa: el único acento de color fuerte del
-  // personaje, y lo que lo separa del fondo verde de los primeros mundos.
+  // Collar de explorador con placa
   const collar = createCelMaterial({ color: 0xd8412f, bands: 2 });
   const tag = createCelMaterial({ color: 0xffd23f, bands: 2, emissive: 0.35 });
   rig.materials.push(collar, tag);
@@ -326,6 +328,55 @@ export function buildBenito(withOutline = true): CritterRig {
   t.position.set(0, -0.09, 0.19);
   (rig.neck ?? rig.body).add(t);
   rig.extras.collar = c;
+
+  /**
+   * Mochila de artefactos.
+   *
+   * El jugador ve la espalda de Benito el 95 % de la partida, y por detrás no
+   * había un solo acento de color: el collar rojo queda tapado por la cabeza.
+   * Los protagonistas del género se leen de espaldas a la primera porque
+   * llevan ropa de colores planos y saturados. Aquí la mochila cumple esa
+   * función y además justifica de dónde salen los ocho artefactos.
+   */
+  const pack = createCelMaterial({ color: 0xe4552c, bands: 2 });
+  const strap = createCelMaterial({ color: 0x2f6fd0, bands: 2 });
+  const buckle = createCelMaterial({ color: 0xffc93c, bands: 2, emissive: 0.2 });
+  rig.materials.push(pack, strap, buckle);
+
+  const backpack = new THREE.Group();
+  // Caja achatada, no una bola: pegada al lomo se lee como una mochila, y
+  // esférica se leía como un globo atado a la espalda.
+  const shell = new THREE.Mesh(GEO.box, pack);
+  shell.scale.set(0.42, 0.44, 0.34);
+  backpack.add(shell);
+  const pocket = new THREE.Mesh(GEO.box, strap);
+  pocket.scale.set(0.3, 0.16, 0.1);
+  pocket.position.set(0, -0.1, -0.2);
+  backpack.add(pocket);
+  // Tapa superior, más clara, para que el bulto no se lea como una pelota
+  const lid = new THREE.Mesh(GEO.box, buckle);
+  lid.scale.set(0.46, 0.1, 0.36);
+  lid.position.set(0, 0.24, 0.0);
+  backpack.add(lid);
+  // Correas cruzadas sobre el lomo, hacia los hombros
+  for (const side of [-1, 1]) {
+    const st = new THREE.Mesh(GEO.box, strap);
+    st.scale.set(0.09, 0.6, 0.06);
+    st.position.set(side * 0.2, 0.04, 0.3);
+    st.rotation.z = side * 0.24;
+    backpack.add(st);
+  }
+  const clip = new THREE.Mesh(GEO.box, buckle);
+  clip.scale.set(0.14, 0.1, 0.06);
+  clip.position.set(0, 0.04, -0.19);
+  backpack.add(clip);
+  // El torso mide 0.48 x 1.32 de radio: por delante de z = -0.6 la mochila
+  // quedaba enterrada dentro del gato y solo asomaba un punto naranja.
+  // El torso llega a z = -0.63: por delante de aquí la mochila se hunde
+  backpack.position.set(0, 0.08, -0.74);
+  rig.body.add(backpack);
+  rig.extras.backpack = backpack;
+
   return rig;
 }
 

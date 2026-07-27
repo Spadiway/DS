@@ -76,6 +76,8 @@ const TALL_PROPS = new Set([
   'iceSpike',
   'crystal',
   'archway',
+  'pipe',
+  'flesh',
 ]);
 
 const GATE_REQUIRES: Record<GateObstacle['kind'], string> = {
@@ -229,8 +231,17 @@ function buildHeightfield(spec: LevelSpec, rng: Rng): { hf: Heightfield; path: {
   const path = buildPathPoints(spec, rng);
   const pathMask = new Float32Array(res * res);
   const halfSize = size / 2;
-  const pathWidth = 7.5;
-  const feather = 5.5;
+  /**
+   * Camino ancho.
+   *
+   * En la referencia la senda de tierra ocupa entre un cuarto y un tercio de
+   * la pantalla, y es lo que hace que el reparto de tonos del cuadro sea
+   * mayoritariamente naranja en vez de verde. Con 7.5 metros la senda se veía
+   * como una raya lejana y no ordenaba nada; a 11 se camina por ella y el
+   * color cálido entra en el encuadre.
+   */
+  const pathWidth = 11;
+  const feather = 7;
 
   // Altura de referencia del camino: media suavizada a lo largo del trazado
   const smoothHeights: number[] = [];
@@ -311,8 +322,11 @@ function buildTerrainMesh(
   const rock = new THREE.Color(pal.cliff);
   const snow = new THREE.Color(0xf2f7ff);
   const shore = new THREE.Color(pal.liquid).lerp(new THREE.Color(pal.groundAlt), 0.55);
-  // Tierra batida del camino: más cálida y saturada que el terreno alterno
-  const pathColor = new THREE.Color(pal.groundAlt).lerp(new THREE.Color(0xa87a44), 0.6);
+  // Tierra batida del camino. Se lleva casi del todo al naranja medido en la
+  // referencia (#b96b17, saturación 0.87): mezclado solo a medias con el
+  // terreno alterno, en los mundos de suelo ya tostado el camino desaparecía
+  // y con él el hilo que ordena el nivel.
+  const pathColor = new THREE.Color(pal.groundAlt).lerp(new THREE.Color(0xb96b17), 0.78);
   const snowLine = spec.worldId === 4 ? 3.5 : Infinity;
 
   const normals = geo.attributes.normal as THREE.BufferAttribute;
@@ -712,6 +726,10 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       // Lejos del camino sobrevive menos de la mitad: el presupuesto de
       // triángulos se gasta donde se ve.
       if (rng() > 0.42 + nearPath * 0.58) continue;
+      // Pero el corredor por el que se anda queda limpio: un camino de tierra
+      // es tierra pisada, no hay nada creciendo encima, y además evita que la
+      // cámara se meta entre dos troncos plantados sobre la ruta.
+      if (!isGrass && pd < 7.5) continue;
 
       const h = world.terrainHeight(pt.x, pt.z);
       if (h < spec.liquid.level + 0.4 && propSpec.kind !== 'coral') continue;
@@ -719,8 +737,13 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (n.y < 0.75 && propSpec.kind !== 'rock') continue;
 
       // Lo cercano se agranda: en la referencia un árbol junto a la ruta mide
-      // tres o cuatro veces el personaje y llena media pantalla.
-      const near = (1 + Math.max(0, clump) * 0.16) * (1 + nearPath * 0.34);
+      // tres o cuatro veces el personaje y llena media pantalla. La hierba se
+      // queda al margen: agrandada y pegada a la cámara se convertía en tres
+      // triángulos verdes planos tapando el bajo de la pantalla.
+      // El tapiz bajo —hierba, helechos, matas— no se agranda: crecido y
+      // pegado a la cámara se convertía en un muro de triángulos planos.
+      const groundCover = isGrass || propSpec.kind === 'fern' || propSpec.kind === 'bush';
+      const near = (1 + Math.max(0, clump) * 0.16) * (1 + (groundCover ? 0 : nearPath * 0.34));
       const scl = rngRange(rng, propSpec.scale[0], propSpec.scale[1]) * near;
       // Los props altos y opacos entran en la lista que consulta la cámara
       if (TALL_PROPS.has(propSpec.kind)) {
@@ -743,7 +766,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     const glowKind = propSpec.kind === 'crystal' || propSpec.kind === 'neonSign' || propSpec.kind === 'lantern';
     const im = createPropMesh(propSpec.kind, instances, roleColorsFor(spec), {
       emissive: glowKind ? 0.32 : propSpec.kind === 'mushroom' || propSpec.kind === 'coral' ? 0.16 : 0,
-      fadeNear: isGrass ? 0 : 2.2,
+      fadeNear: isGrass ? 1.8 : 1.3,
       castShadow: q.shadows && !isGrass,
     });
     group.add(im);
@@ -872,8 +895,8 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (i % 2 === 0 && rng() < 0.62 && !interior && !alien) {
         for (const side of [-1, 1]) {
           if (rng() < 0.22) continue; // hueco
-          const ox = -dirZ * side * 5.6;
-          const oz = dirX * side * 5.6;
+          const ox = -dirZ * side * 8.4;
+          const oz = dirX * side * 8.4;
           const fx = a.x + ox;
           const fz = a.z + oz;
           const fh = world.terrainHeight(fx, fz);
@@ -886,8 +909,8 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (sinceLamp >= (alien ? 5 : 7)) {
         sinceLamp = 0;
         const side = rng() < 0.5 ? -1 : 1;
-        const lx = a.x - dirZ * side * 4.6;
-        const lz = a.z + dirX * side * 4.6;
+        const lx = a.x - dirZ * side * 7.2;
+        const lz = a.z + dirX * side * 7.2;
         const lh = world.terrainHeight(lx, lz);
         if (lh > spec.liquid.level + 0.4) {
           lamps.push({ x: lx, y: lh - 0.1, z: lz, scale: rngRange(rng, 0.95, 1.15), rotY: rng() * 6.28, tint: 1 });
@@ -946,7 +969,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (list.length === 0) continue;
       const im = createPropMesh(kind as never, list, roles, {
         emissive,
-        fadeNear: 2.2,
+        fadeNear: 1.3,
         castShadow: q.shadows,
       });
       group.add(im);
@@ -980,7 +1003,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
         for (let s = 0; s < 7; s++) {
           const t = rng();
           const side = rng() < 0.5 ? -1 : 1;
-          const off = rngRange(rng, 4.6, 8.2);
+          const off = rngRange(rng, 7.2, 11.5);
           const vx = a.x + dirX * len * t - dirZ * side * off;
           const vz = a.z + dirZ * len * t + dirX * side * off;
           const vh = world.terrainHeight(vx, vz);

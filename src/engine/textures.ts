@@ -459,12 +459,15 @@ export function furTexture(opts: FurOptions): THREE.CanvasTexture {
   // Anillos atigrados: bandas horizontales que rodean el cuerpo, más marcadas
   // en el lomo y difuminadas hacia el vientre.
   if (opts.stripes && opts.stripe !== undefined) {
-    ctx.fillStyle = shade(opts.stripe, 0.78);
+    // Contraste alto: con las rayas al 50 % de opacidad sobre un tono próximo
+    // al del pelo, a distancia de juego el animal se leía como una masa lisa.
+    // Un atigrado tiene que reconocerse desde lejos, que es donde vive.
+    ctx.fillStyle = shade(opts.stripe, 0.58);
     for (let i = 0; i < 11; i++) {
       const y = (i / 11) * size + 4;
       // Anillos alternos gruesos y finos, como en un atigrado real
-      const h = (i % 2 === 0 ? 12 : 6) + Math.random() * 6;
-      ctx.globalAlpha = 0.5;
+      const h = (i % 2 === 0 ? 14 : 7) + Math.random() * 6;
+      ctx.globalAlpha = 0.82;
       ctx.beginPath();
       ctx.moveTo(0, y);
       for (let x = 0; x <= size; x += 12) ctx.lineTo(x, y + Math.sin(x * 0.05 + i) * 4);

@@ -420,8 +420,11 @@ export function createSkyDome(zenith: number, horizon: number, radius = 520): TH
 
       void main() {
         float h = vHeight01;
-        float b = band(h, 9.0);
-        h = mix(h, b, 0.45);
+        // Cuantización suave: con la mezcla al 45 % los cielos saturados
+        // salían con anillos concéntricos muy visibles, que en el original no
+        // existen. Queda lo justo para insinuar el escalonado de la época.
+        float b = band(h, 11.0);
+        h = mix(h, b, 0.18);
         vec3 col = mix(uBottom, uTop, pow(clamp(h, 0.0, 1.0), 0.32));
 
         /**
