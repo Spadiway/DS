@@ -414,8 +414,15 @@ function setHelmetColor(pet: Pet, level: AlertLevel, colorBlind: boolean, dt: nu
   helmetColor.lerp(targetColor, Math.min(1, dt * 10));
   mat.color.copy(helmetColor);
   mat.emissive.copy(helmetColor);
-  // Parpadeo cuando está alerta: la luz roja debe verse desde lejos
-  const pulse = level === 2 ? 1.6 + Math.sin(performance.now() * 0.02) * 0.7 : level === 1 ? 1.3 : 0.9;
+  /**
+   * Parpadeo cuando está alerta: la luz debe verse desde lejos, pero sin
+   * mapeo de tonos el recorte es por canal y una emisión de 1.6 sobre un
+   * color ya claro se sale de rango, se lleva el bloom por delante y deja un
+   * chorro blanco vertical en pantalla que tapaba medio nivel. Con estos
+   * valores el color de alerta sigue siendo inequívoco y el brillo se queda
+   * dentro de lo que el bloom puede tratar.
+   */
+  const pulse = level === 2 ? 0.7 + Math.sin(performance.now() * 0.02) * 0.3 : level === 1 ? 0.58 : 0.4;
   mat.emissiveIntensity = pulse;
   pet.rig.helmetLight.scale.setScalar(0.07 * (1 + (level === 2 ? 0.45 : 0)));
 }

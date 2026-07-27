@@ -75,6 +75,14 @@ export type CelOptions = {
   map?: THREE.Texture | null;
   /** Repetición de la textura sobre la superficie. */
   mapRepeat?: number;
+  /**
+   * Brillo especular recortado, de 0 a 1. Es el acabado lustroso que define
+   * la estética de la época —plástico, cristal, agua, superficies pulidas— y
+   * que aquí faltaba por completo: todo era mate y por eso se leía como
+   * cartón pintado. No es un reflejo suave sino una mancha con contorno, para
+   * que encaje con el sombreado plano del resto.
+   */
+  gloss?: number;
 };
 
 const registry = new Set<THREE.Material>();
@@ -114,8 +122,58 @@ export function createCelMaterial(opts: CelOptions): THREE.MeshToonMaterial {
     emissive: new THREE.Color(opts.rim && emissiveAmount > 0 ? opts.rim : opts.color),
     emissiveIntensity: emissiveAmount,
   });
+  if (opts.gloss) applyGloss(mat, opts.gloss);
   registry.add(mat);
   return mat;
+}
+
+/**
+ * Inyecta el brillo especular recortado en un material toon.
+ *
+ * Three no ofrece componente especular en MeshToonMaterial, así que se añade
+ * a mano un término de Blinn-Phong contra la luz principal y se recorta en
+ * dos escalones. El resultado no es un reflejo fotográfico sino una mancha de
+ * borde duro, que es exactamente el lustre de plástico y cristal de los
+ * juegos de la época.
+ */
+function applyGloss(mat: THREE.MeshToonMaterial, amount: number): void {
+  const previous = mat.onBeforeCompile;
+  mat.onBeforeCompile = (shader, renderer) => {
+    previous?.call(mat, shader, renderer);
+    shader.uniforms.uGloss = { value: amount };
+    shader.uniforms.uGlossDir = { value: celLight.dir.clone() };
+    const store = mat.userData as { shader?: THREE.WebGLProgramParametersWithUniforms };
+    store.shader = shader;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\n varying vec3 vGlossWorld;\n varying vec3 vGlossNormal;')
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+         vGlossWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+         vGlossNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform float uGloss;
+         uniform vec3 uGlossDir;
+         varying vec3 vGlossWorld;
+         varying vec3 vGlossNormal;`,
+      )
+      .replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+         vec3 gN = normalize(vGlossNormal);
+         vec3 gV = normalize(cameraPosition - vGlossWorld);
+         vec3 gH = normalize(uGlossDir + gV);
+         float gS = pow(max(dot(gN, gH), 0.0), 28.0);
+         // Dos escalones: núcleo intenso y halo tenue con borde marcado
+         gS = smoothstep(0.32, 0.44, gS) * 0.42 + smoothstep(0.68, 0.78, gS) * 0.58;
+         gl_FragColor.rgb += vec3(1.0, 0.99, 0.94) * gS * uGloss;`,
+      );
+  };
+  mat.needsUpdate = true;
 }
 
 /**
@@ -323,6 +381,7 @@ export function tickCelMaterials(time: number): void {
     if (sh.uniforms.uTime) sh.uniforms.uTime.value = liquidTime;
     // La dirección del sol cambia con la paleta del nivel
     if (sh.uniforms.uSunDir) (sh.uniforms.uSunDir.value as THREE.Vector3).copy(celLight.dir);
+    if (sh.uniforms.uGlossDir) (sh.uniforms.uGlossDir.value as THREE.Vector3).copy(celLight.dir);
   }
 }
 

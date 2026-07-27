@@ -452,6 +452,21 @@ function buildGeometry(pieces: Piece[], colors: RoleColors): THREE.BufferGeometr
       col[i * 3 + 2] = c.b * k * (1 - t * 0.03);
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+    /**
+     * Máscara de emisión por vértice.
+     *
+     * El brillo se declaraba por objeto entero, de modo que una farola brillaba
+     * también por el poste y por la base. En un mundo de paleta clara eso la
+     * convertía en una columna blanca sin forma que cruzaba la pantalla. Solo
+     * emiten las piezas de rol `glow`, que es el cristal, el neón o la vela:
+     * el herraje que lo sostiene es material corriente.
+     */
+    const glowMask = new Float32Array(count);
+    if (piece.role === 'glow') glowMask.fill(1);
+    else if (piece.role === 'accent') glowMask.fill(0.35);
+    g.setAttribute('aGlow', new THREE.BufferAttribute(glowMask, 1));
+
     parts.push(g);
   }
   const merged = BufferGeometryUtils.mergeGeometries(parts, false);
@@ -460,6 +475,19 @@ function buildGeometry(pieces: Piece[], colors: RoleColors): THREE.BufferGeometr
   merged.computeVertexNormals();
   return merged;
 }
+
+/** Props de superficie pulida: cristal, hielo, metal, cerámica, neón. */
+const SHINY_PROPS = new Set<PropKind>([
+  'crystal',
+  'iceSpike',
+  'neonSign',
+  'pipe',
+  'lantern',
+  'lampPost',
+  'monolith',
+  'barrel',
+  'archway',
+]);
 
 export type PropInstance = { x: number; y: number; z: number; scale: number; rotY: number; tint: number };
 
@@ -472,7 +500,7 @@ export function createPropMesh(
   kind: PropKind,
   instances: PropInstance[],
   colors: RoleColors,
-  opts: { emissive?: number; fadeNear?: number; castShadow?: boolean } = {},
+  opts: { emissive?: number; fadeNear?: number; castShadow?: boolean; gloss?: number } = {},
 ): THREE.InstancedMesh {
   const geo = buildGeometry(BUILDERS[kind](), colors);
   /**
@@ -487,17 +515,56 @@ export function createPropMesh(
   detail.wrapS = detail.wrapT = THREE.RepeatWrapping;
   detail.repeat.set(2.5, 2.5);
   detail.needsUpdate = true;
+
+  /**
+   * La emisión se atempera según lo claro que sea el color que brilla.
+   *
+   * Sin mapeo de tonos, un cristal casi blanco con emisión 0.32 se sale de
+   * rango, se recorta a blanco puro y el bloom lo convierte en un chorro
+   * luminoso que cruza la pantalla: era lo que pasaba con los pinchos de
+   * hielo del mundo helado, cuya paleta es blanca de arriba abajo. Un cristal
+   * oscuro, en cambio, necesita toda la emisión para leerse.
+   */
+  const glow = new THREE.Color(colors.glow ?? 0xffffff);
+  const glowLum = glow.r * 0.2126 + glow.g * 0.7152 + glow.b * 0.0722;
+  const emissive = (opts.emissive ?? 0) * Math.max(0.3, Math.min(1, 1.2 - glowLum));
+
   const mat = createCelMaterialInstanced({
     color: 0xffffff,
     bands: 3,
-    emissive: opts.emissive ?? 0,
+    emissive,
     vertexColors: true,
     map: detail,
+    /**
+     * Lo mineral, lo pulido y lo artificial brillan; la vegetación, apenas.
+     * Lo que ya emite luz propia no lleva especular: sumar un reflejo sobre
+     * una superficie emisiva dispara el umbral del bloom y un pincho de hielo
+     * se convertía en un haz blanco que cruzaba la pantalla.
+     */
+    gloss: opts.gloss ?? ((opts.emissive ?? 0) > 0 ? 0 : SHINY_PROPS.has(kind) ? 0.26 : 0.07),
   });
 
   const fadeNear = opts.fadeNear ?? 0;
-  if (fadeNear > 0) {
-    mat.onBeforeCompile = (shader) => {
+  // Se encadena sobre lo que ya hubiera puesto el material (el especular):
+  // asignar aquí directamente borraba ese enganche y el brillo desaparecía.
+  const previousCompile = mat.onBeforeCompile;
+  mat.onBeforeCompile = (shader, renderer) => {
+    previousCompile?.call(mat, shader, renderer);
+
+    if (emissive > 0) {
+      // La emisión se limita a las piezas marcadas en la máscara de vértice
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\n attribute float aGlow;\n varying float vGlow;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n vGlow = aGlow;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\n varying float vGlow;')
+        .replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vGlow;',
+        );
+    }
+
+    if (fadeNear > 0) {
       shader.uniforms.uFadeNear = { value: fadeNear };
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\n varying float vCamDist;')
@@ -526,8 +593,8 @@ export function createPropMesh(
              if (keep < threshold) discard;
            }`,
         );
-    };
-  }
+    }
+  };
 
   const im = new THREE.InstancedMesh(geo, mat, Math.max(1, instances.length));
   // El nombre identifica el tipo en el inspector y en el arnés de pruebas

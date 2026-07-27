@@ -279,12 +279,26 @@ export class Game {
     this.hemi.groundColor
       .copy(new THREE.Color(spec.palette.ground))
       .lerp(new THREE.Color(0xffc880), 0.4);
-    this.sun.intensity = spec.palette.sunIntensity * 0.5;
-    this.hemi.intensity = 1.05;
+    /**
+     * Compensación por lo claro que sea el mundo.
+     *
+     * Sin mapeo de tonos el recorte es por canal, así que el presupuesto de
+     * luz que deja bonito un prado verde revienta a blanco un mundo de hielo,
+     * donde el suelo, los árboles y el cielo son todos casi blancos. Era lo
+     * que pasaba en el mundo 4: un pincho de hielo junto a la cámara se
+     * convertía en una mancha blanca sin forma. Se mide el albedo dominante y
+     * se recorta el presupuesto en consecuencia.
+     */
+    const groundLum = new THREE.Color(spec.palette.ground).getHSL({ h: 0, s: 0, l: 0 }).l;
+    const propLum = new THREE.Color(spec.palette.prop).getHSL({ h: 0, s: 0, l: 0 }).l;
+    const albedo = groundLum * 0.7 + propLum * 0.3;
+    const trim = clamp(1.36 - albedo * 0.78, 0.62, 1.1);
+
+    this.sun.intensity = spec.palette.sunIntensity * 0.5 * trim;
+    this.hemi.intensity = 1.05 * trim;
     this.ambient.color.copy(ambient).lerp(new THREE.Color(0xfff2e0), 0.35);
     // Las paletas oscuras necesitan más relleno; las claras, menos
-    const groundLum = new THREE.Color(spec.palette.ground).getHSL({ h: 0, s: 0, l: 0 }).l;
-    this.ambient.intensity = clamp(0.78 - groundLum * 0.3, 0.5, 0.76);
+    this.ambient.intensity = clamp(0.78 - groundLum * 0.3, 0.5, 0.76) * trim;
     this.fill.color.copy(new THREE.Color(spec.palette.sky[1])).lerp(new THREE.Color(0xffffff), 0.55);
     this.fill.intensity = 0.26;
     // Casi sin sombra proyectada: el disco de contacto bajo los pies ya

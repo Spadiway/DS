@@ -143,13 +143,16 @@ export function buildCat(opts: CatOptions): CritterRig {
   const furMap = faceForward(
     furTexture({ base: opts.fur, belly: opts.belly, stripe: opts.furAlt, stripes: opts.stripes }),
   );
-  const fur = createCelMaterial({ color: 0xffffff, bands: 3, map: furMap });
-  const plain = createCelMaterial({ color: opts.fur, bands: 3 });
-  const belly = createCelMaterial({ color: opts.belly, bands: 3 });
-  const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
+  // Lustre leve en el pelaje y algo más en la nariz y las almohadillas: la
+  // referencia tiene un acabado plástico y brillante en todo, no mate.
+  const fur = createCelMaterial({ color: 0xffffff, bands: 3, map: furMap, gloss: 0.12 });
+  const plain = createCelMaterial({ color: opts.fur, bands: 3, gloss: 0.12 });
+  const belly = createCelMaterial({ color: opts.belly, bands: 3, gloss: 0.1 });
+  const dark = createCelMaterial({ color: 0x2a2530, bands: 2, gloss: 0.35 });
   const faceMat = createCelMaterial({
     color: 0xffffff,
     bands: 3,
+    gloss: 0.16,
     map: faceForward(
       faceTexture({
         fur: opts.fur,
@@ -315,8 +318,8 @@ export function buildBenito(withOutline = true): CritterRig {
     stripes: true,
   });
   // Collar de explorador con placa
-  const collar = createCelMaterial({ color: 0xd8412f, bands: 2 });
-  const tag = createCelMaterial({ color: 0xffd23f, bands: 2, emissive: 0.35 });
+  const collar = createCelMaterial({ color: 0xd8412f, bands: 2, gloss: 0.4 });
+  const tag = createCelMaterial({ color: 0xffd23f, bands: 2, emissive: 0.35, gloss: 0.5 });
   rig.materials.push(collar, tag);
   const c = new THREE.Mesh(GEO.torus, collar);
   c.scale.set(0.24, 0.24, 0.7);
@@ -338,9 +341,9 @@ export function buildBenito(withOutline = true): CritterRig {
    * llevan ropa de colores planos y saturados. Aquí la mochila cumple esa
    * función y además justifica de dónde salen los ocho artefactos.
    */
-  const pack = createCelMaterial({ color: 0xe4552c, bands: 2 });
-  const strap = createCelMaterial({ color: 0x2f6fd0, bands: 2 });
-  const buckle = createCelMaterial({ color: 0xffc93c, bands: 2, emissive: 0.2 });
+  const pack = createCelMaterial({ color: 0xe4552c, bands: 2, gloss: 0.42 });
+  const strap = createCelMaterial({ color: 0x2f6fd0, bands: 2, gloss: 0.34 });
+  const buckle = createCelMaterial({ color: 0xffc93c, bands: 2, emissive: 0.2, gloss: 0.55 });
   rig.materials.push(pack, strap, buckle);
 
   const backpack = new THREE.Group();
@@ -429,6 +432,7 @@ export function buildDeedee(withOutline = true): CritterRig {
   const faceMat = createCelMaterial({
     color: 0xffffff,
     bands: 3,
+    gloss: 0.16,
     map: faceForward(
       faceTexture({ fur: 0xd8935a, belly: 0xf3d2a8, eye: 0x2a1a10, kind: 'dog', angry: 1, tongue: true }),
     ),
@@ -574,8 +578,10 @@ export function buildPet(color: string, withOutline = true): PetRig {
   const pants = createCelMaterial({ color: 0xffffff, bands: 3, map: clothTexture(c.pants), mapRepeat: 2 });
   const dark = createCelMaterial({ color: 0x2a2530, bands: 2 });
   const skin = createCelMaterial({ color: 0xf0cbb0, bands: 2 });
-  const helmetMat = createCelMaterial({ color: 0xffffff, bands: 3, map: helmetTexture(0x6a6f88) });
-  const lightMat = createCelMaterial({ color: 0x40a0ff, bands: 2, emissive: 1.1, rim: 0x80c0ff });
+  // Casco muy lustroso: es la pieza que identifica a una mascota controlada
+  const helmetMat = createCelMaterial({ color: 0xffffff, bands: 3, map: helmetTexture(0x6a6f88), gloss: 0.6 });
+  // La intensidad real la fija pet.ts según el nivel de alerta
+  const lightMat = createCelMaterial({ color: 0x40a0ff, bands: 2, emissive: 0.4, rim: 0x80c0ff });
   const faceMat = createCelMaterial({
     color: 0xffffff,
     bands: 3,
