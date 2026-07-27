@@ -224,6 +224,13 @@ const pal = (p: Partial<ThemePalette> & Pick<ThemePalette, 'sky' | 'ground' | 'l
     // de una playa es celeste, nunca gris. Un gris de niebla es justamente lo
     // que apaga un mundo entero.
     fog: lighten(raw.fog, 0.22),
+    /**
+     * Niebla más liviana. Al aclarar su color, la densidad original borraba el
+     * fondo: en la referencia las colinas lejanas siguen leyéndose —solo
+     * pierden saturación y contraste—, y un horizonte que se disuelve del todo
+     * hace que el mundo parezca terminar a treinta metros.
+     */
+    fogDensity: raw.fogDensity * 0.62,
     ambient: warmify(raw.ambient, 0.42, 0.2, 0.24),
     sun: lighten(raw.sun, 0.18),
   };

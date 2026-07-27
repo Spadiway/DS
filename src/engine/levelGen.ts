@@ -78,6 +78,10 @@ const TALL_PROPS = new Set([
   'archway',
   'pipe',
   'flesh',
+  // Los peñascos grandes también tapan: el filtro por altura que aplica la
+  // cámara ya descarta los cantos pequeños, así que basta con incluirlos.
+  'rock',
+  'hut',
 ]);
 
 const GATE_REQUIRES: Record<GateObstacle['kind'], string> = {
@@ -730,6 +734,13 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       // es tierra pisada, no hay nada creciendo encima, y además evita que la
       // cámara se meta entre dos troncos plantados sobre la ruta.
       if (!isGrass && pd < 7.5) continue;
+      /**
+       * Y la explanada de salida también. Un peñasco o una palmera plantados
+       * a tres metros del punto de aparición son más cerca de lo que la cámara
+       * puede retroceder, así que el primer plano de la partida se lo comía un
+       * plano de color liso. Doce metros bastan para que la cámara tenga sitio.
+       */
+      if (!isGrass && Math.hypot(pt.x, pt.z) < 12) continue;
 
       const h = world.terrainHeight(pt.x, pt.z);
       if (h < spec.liquid.level + 0.4 && propSpec.kind !== 'coral') continue;
@@ -1124,6 +1135,21 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
         requires: GATE_REQUIRES[gate.kind],
         reward: gate.kind === 'clubCrate' ? (rng() < 0.5 ? 'cookie' : 'none') : 'coin',
       });
+
+      /**
+       * Los obstáculos también tapan la cámara. Faltaban en la lista y, como
+       * son grandes y hay que acercarse a ellos por fuerza para romperlos, la
+       * cámara acababa dentro de un muro y la pantalla se llenaba de un plano
+       * de color liso: era lo que pasaba al salir en el nivel del volcán.
+       */
+      if (box) {
+        cameraBlockers.push({
+          x: mesh.position.x,
+          z: mesh.position.z,
+          r: Math.max(box.half.x, box.half.z) + 0.4,
+          top: mesh.position.y + box.half.y,
+        });
+      }
     }
   }
 
