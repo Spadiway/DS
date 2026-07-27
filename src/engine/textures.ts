@@ -156,6 +156,53 @@ export function groundDetailTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Grano para el decorado.
+ *
+ * Centrada en blanco: multiplica el color de vértice sin oscurecerlo. Solo
+ * añade el picoteo de téxel y unas vetas suaves que rompen la superficie lisa
+ * de las primitivas, que es lo que separa una copa de árbol de un globo.
+ */
+export function propGrainTexture(): THREE.CanvasTexture {
+  const key = 'propGrain';
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const size = 128;
+  const { c, ctx } = canvas(size);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+
+  // Vetas suaves: manchas alargadas apenas más oscuras
+  for (let i = 0; i < 90; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const len = 6 + Math.random() * 22;
+    const a = Math.random() * Math.PI;
+    ctx.strokeStyle = `rgba(150,150,150,${0.1 + Math.random() * 0.16})`;
+    ctx.lineWidth = 1 + Math.random() * 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+    ctx.stroke();
+  }
+  speckle(ctx, size, 380, [0.8, 2.4], ['rgba(170,170,170,1)', 'rgba(255,255,255,1)'], 0.3);
+
+  // Grano fino de téxel
+  const img = ctx.getImageData(0, 0, size, size);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 16;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = finish(c, { repeat: 1, linear: true });
+  cache.set(key, tex);
+  return tex;
+}
+
 /** Corteza: anillos y vetas verticales. */
 export function barkTexture(base: number): THREE.CanvasTexture {
   const key = `bark${base}`;
@@ -786,16 +833,26 @@ export function cloudTexture(): THREE.CanvasTexture {
   const WHITE = 'rgba(255,255,255,%A%)';
   const SHADE = 'rgba(186,208,230,%A%)';
 
-  // Seis masas grandes repartidas por el panorama, más algún jirón suelto
-  for (let i = 0; i < 6; i++) {
-    const cx = ((i + Math.random() * 0.6) / 6) * w;
-    const cy = h * (0.46 + Math.random() * 0.22);
-    const scale = 1.5 + Math.random() * 1.1;
+  /**
+   * Los racimos viven en el cuarto superior del lienzo, y crecen hacia abajo.
+   *
+   * Medido sobre el render: en esta textura la fila 0 del lienzo cae sobre el
+   * horizonte y la elevación crece con la fila, de manera que "arriba" en el
+   * cielo es "abajo" en la imagen. Con los cúmulos dibujados al revés la panza
+   * en sombra quedaba por encima de la cúpula y el blanco tapaba los quince
+   * grados de cielo que entran en cuadro: se perdía el azul por completo.
+   * Dejando vacías las tres cuartas partes de abajo del lienzo queda azul
+   * limpio por encima de las nubes.
+   */
+  for (let i = 0; i < 5; i++) {
+    const cx = ((i + Math.random() * 0.8) / 5) * w;
+    const cy = h * (0.16 + Math.random() * 0.08);
+    const scale = 1.0 + Math.random() * 0.7;
     const lobes = 6 + Math.floor(Math.random() * 4);
-    // Panza: primero la sombra, para que quede debajo de los bultos claros
+    // Panza: primero la sombra, hacia el horizonte
     for (let k = 0; k < lobes; k++) {
       const t = k / (lobes - 1) - 0.5;
-      puff(cx + t * 150 * scale, cy + 20 * scale, 28 * scale, 0.75, SHADE);
+      puff(cx + t * 150 * scale, cy - 14 * scale, 24 * scale, 0.75, SHADE);
     }
     // Cúpula: bultos cada vez mayores hacia el centro del racimo
     for (let k = 0; k < lobes; k++) {
@@ -803,15 +860,18 @@ export function cloudTexture(): THREE.CanvasTexture {
       const bulge = Math.cos(t * Math.PI);
       puff(
         cx + t * 150 * scale,
-        cy - bulge * 34 * scale,
-        (24 + bulge * 26 + Math.random() * 10) * scale,
+        cy + bulge * 28 * scale,
+        (20 + bulge * 22 + Math.random() * 8) * scale,
         0.97,
         WHITE,
       );
     }
   }
-  for (let i = 0; i < 10; i++) {
-    puff(Math.random() * w, h * (0.3 + Math.random() * 0.5), (14 + Math.random() * 22), 0.5, WHITE);
+  // Cuatro jirones sueltos algo más altos, para que el cielo no se corte de
+  // golpe. Más que eso y el azul desaparece: el cielo debe ser azul con nubes,
+  // no nubes con algo de azul.
+  for (let i = 0; i < 4; i++) {
+    puff(Math.random() * w, h * (0.24 + Math.random() * 0.2), 12 + Math.random() * 16, 0.4, WHITE);
   }
 
   const tex = new THREE.CanvasTexture(c);

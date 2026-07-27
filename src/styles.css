@@ -1034,11 +1034,21 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
 }
 
+/**
+ * Viñeteado apenas insinuado.
+ *
+ * Tenía 160 px de negro al 55 %, que sobre una ventana de 544 px de alto
+ * apagaba la franja de cielo entera: medido, la dejaba en gris puro
+ * (saturación 0.00) por muy azul que fuese lo que había debajo. El
+ * oscurecimiento de bordes es un recurso de cine, justo lo contrario del
+ * acabado claro y plano que se busca aquí. Queda lo justo para que el HUD
+ * despegue del fondo.
+ */
 .vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  box-shadow: inset 0 0 160px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 70px rgba(18, 12, 40, 0.16);
 }
 
 .hurt-flash {

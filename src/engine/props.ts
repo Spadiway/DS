@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createCelMaterialInstanced } from './celMaterial';
-import { groundDetailTexture } from './textures';
+import { propGrainTexture } from './textures';
 import type { PropKind } from '../content/worlds';
 import { type Rng, rngRange } from './mathx';
 
@@ -381,10 +381,38 @@ function buildGeometry(pieces: Piece[], colors: RoleColors): THREE.BufferGeometr
     c.setHex(colors[piece.role] ?? 0xffffff);
     const count = g.attributes.position.count;
     const col = new Float32Array(count * 3);
+
+    /**
+     * Iluminación horneada por pieza.
+     *
+     * Es el recurso de la época y el que más volumen da por vértice gastado:
+     * en vez de esperar a que una luz dinámica module la copa de un árbol
+     * —que con el sombreado plano apenas la modula—, el degradado va escrito
+     * en el color. La parte alta de cada bulto recibe cielo y se aclara y
+     * enfría un poco; la baja queda a la sombra del propio objeto y se
+     * oscurece y calienta. Sin esto las copas se veían como recortes de
+     * cartulina de un solo verde.
+     */
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    let minY = Infinity;
+    let maxY = -Infinity;
     for (let i = 0; i < count; i++) {
-      col[i * 3] = c.r;
-      col[i * 3 + 1] = c.g;
-      col[i * 3 + 2] = c.b;
+      const y = pos.getY(i);
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const span = Math.max(0.001, maxY - minY);
+    // El tronco apenas se degrada: es cilíndrico y su lectura viene de la
+    // textura, no de la forma. La hoja y la piedra sí.
+    const depth = piece.role === 'trunk' || piece.role === 'painted' ? 0.16 : 0.34;
+    for (let i = 0; i < count; i++) {
+      const t = (pos.getY(i) - minY) / span;
+      // Curva sesgada hacia arriba: la mitad inferior se apaga deprisa, que es
+      // como se comporta la luz rebotada bajo un volumen macizo.
+      const k = 1 - depth * 0.5 + (t * t * (3 - 2 * t) - 0.5) * depth;
+      col[i * 3] = c.r * k * (1 - (1 - t) * 0.04);
+      col[i * 3 + 1] = c.g * k;
+      col[i * 3 + 2] = c.b * k * (1 - t * 0.03);
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     parts.push(g);
@@ -410,9 +438,15 @@ export function createPropMesh(
   opts: { emissive?: number; fadeNear?: number; castShadow?: boolean } = {},
 ): THREE.InstancedMesh {
   const geo = buildGeometry(BUILDERS[kind](), colors);
-  // Misma textura gris de detalle que el terreno: da grano a corteza, hoja y
-  // piedra sin necesitar una imagen distinta por tipo de objeto.
-  const detail = groundDetailTexture().clone();
+  /**
+   * Grano de téxel. Antes se reutilizaba la máscara del terreno, que es un
+   * gris medio: al multiplicarse directamente contra el color de vértice
+   * —sin recentrar, como sí hace el material del terreno— dejaba todo el
+   * decorado a un tercio de su brillo. De ahí que los árboles se vieran como
+   * siluetas oscuras. Esta máscara está centrada en blanco: añade textura
+   * sin robar luz.
+   */
+  const detail = propGrainTexture().clone();
   detail.wrapS = detail.wrapT = THREE.RepeatWrapping;
   detail.repeat.set(2.5, 2.5);
   detail.needsUpdate = true;

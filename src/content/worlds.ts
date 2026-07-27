@@ -218,7 +218,7 @@ const pal = (p: Partial<ThemePalette> & Pick<ThemePalette, 'sky' | 'ground' | 'l
     // del horizonte lo pone la banda de calima de la cúpula, que es fina; si
     // además se aclara la paleta, el cielo entero se convierte en un muro
     // blanco y desaparece el azul.
-    sky: [lighten(raw.sky[0], 0.16), warmify(raw.sky[1], 0.0, 0.3, 0.04)] as [number, number],
+    sky: [lighten(raw.sky[0], 0.14), warmify(raw.sky[1], 0.0, 0.46, 0.0)] as [number, number],
     // La niebla es la perspectiva aérea. Conserva el tono del horizonte en vez
     // de irse al gris: en el original la lejanía de una aldea es tostada y la
     // de una playa es celeste, nunca gris. Un gris de niebla es justamente lo

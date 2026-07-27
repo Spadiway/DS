@@ -213,7 +213,12 @@ export function createLiquidMaterial(
     shader.uniforms.uCausticAmount = { value: withCaustics ? 1.5 : 0 };
     shader.uniforms.uFoam = { value: new THREE.Color(foam) };
     shader.uniforms.uFoamStrength = { value: foamStrength };
+    shader.uniforms.uSheen = { value: new THREE.Color(color) };
+    shader.uniforms.uSunDir = { value: celLight.dir.clone() };
+    // La lava y el ácido no reflejan como el agua: apenas un apunte
+    shader.uniforms.uSpecular = { value: withCaustics ? 0.85 : 0.22 };
     mat.userData.shader = shader;
+    mat.userData.sunDirUniform = true;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -236,6 +241,9 @@ export function createLiquidMaterial(
          uniform float uCausticAmount;
          uniform vec3 uFoam;
          uniform float uFoamStrength;
+         uniform vec3 uSheen;
+         uniform vec3 uSunDir;
+         uniform float uSpecular;
          varying vec3 vWorld;`,
       )
       .replace(
@@ -251,12 +259,34 @@ export function createLiquidMaterial(
          gl_FragColor.rgb = mix(gl_FragColor.rgb, uFoam, smoothstep(0.82, 1.0, slow) * uFoamStrength * 0.6);
 
          // Cáusticas: dos capas de red luminosa a distinta deriva, la marca de
-         // agua de los juegos de esta época.
+         // agua de los juegos de esta época. Se tiñen con el propio color del
+         // líquido en vez de con un gris verdoso: sumar blanco desaturaba el
+         // agua justo donde más brilla y la dejaba de color charco.
          vec2 cuv = vWorld.xz * 0.055;
          float k1 = texture2D(uCaustics, cuv + vec2(uTime * 0.021, uTime * 0.013)).r;
          float k2 = texture2D(uCaustics, cuv * 1.7 - vec2(uTime * 0.017, uTime * 0.024)).r;
          float caustic = max(0.0, (k1 + k2) - 1.05);
-         gl_FragColor.rgb += vec3(0.55, 0.75, 0.7) * caustic * uCausticAmount;`,
+         gl_FragColor.rgb += mix(uSheen, vec3(1.0), 0.35) * caustic * uCausticAmount;
+
+         /**
+          * Brillo especular de sol sobre el oleaje.
+          *
+          * Es lo que separa una lámina de color de una superficie de agua, y
+          * el rasgo más reconocible del acabado brillante de la época: reflejo
+          * duro, muy blanco y con borde marcado, no un degradado suave.
+          */
+         vec3 nrm = normalize(vec3(
+           sin(vWorld.x * 0.35 + uTime * 1.7) * 0.22 + sin(vWorld.z * 0.21 - uTime * 1.1) * 0.16,
+           1.0,
+           cos(vWorld.z * 0.31 - uTime * 1.4) * 0.22 + cos(vWorld.x * 0.19 + uTime * 0.9) * 0.16
+         ));
+         vec3 viewDir = normalize(cameraPosition - vWorld);
+         vec3 halfway = normalize(uSunDir + viewDir);
+         float spec = pow(max(dot(nrm, halfway), 0.0), 42.0);
+         // Recorte en dos escalones: el reflejo se lee como una mancha con
+         // contorno, igual que en el sombreado plano del resto del juego
+         spec = smoothstep(0.25, 0.45, spec) * 0.55 + smoothstep(0.6, 0.75, spec) * 0.45;
+         gl_FragColor.rgb += vec3(1.0, 0.98, 0.92) * spec * uSpecular;`,
       );
     // Posición de mundo para la espuma
     shader.vertexShader = shader.vertexShader
@@ -289,7 +319,10 @@ export function tickCelMaterials(time: number): void {
   liquidTime = time;
   for (const m of registry) {
     const sh = (m as THREE.Material & { userData: { shader?: THREE.WebGLProgramParametersWithUniforms } }).userData?.shader;
-    if (sh?.uniforms?.uTime) sh.uniforms.uTime.value = liquidTime;
+    if (!sh?.uniforms) continue;
+    if (sh.uniforms.uTime) sh.uniforms.uTime.value = liquidTime;
+    // La dirección del sol cambia con la paleta del nivel
+    if (sh.uniforms.uSunDir) (sh.uniforms.uSunDir.value as THREE.Vector3).copy(celLight.dir);
   }
 }
 
@@ -400,24 +433,34 @@ export function createSkyDome(zenith: number, horizon: number, radius = 520): TH
         // Las bandas van muy pegadas al horizonte: la cámara mira casi
         // horizontal y solo entran en cuadro los quince primeros grados de
         // cielo. Con las nubes repartidas por toda la bóveda no se veía una.
-        float band1 = clamp((vUv.y - 0.008) / 0.085, 0.0, 1.0);
-        float band2 = clamp((vUv.y - 0.02) / 0.26, 0.0, 1.0);
+        float band1 = clamp((vUv.y - 0.004) / 0.10, 0.0, 1.0);
+        float band2 = clamp((vUv.y - 0.012) / 0.30, 0.0, 1.0);
         vec4 c1 = texture2D(uClouds, vec2(vUv.x * 1.6 + uTime * 0.0035, band1));
         vec4 c2 = texture2D(uClouds, vec2(vUv.x * 0.85 - uTime * 0.0018 + 0.37, band2));
 
         // Se desvanecen justo contra el horizonte y hacia el cenit
         float fade = smoothstep(0.0, 0.06, vHeight01 - 0.5) * (1.0 - smoothstep(0.86, 1.0, vHeight01));
-        // La capa lejana va por debajo de la cercana
-        vec3 cloudCol = mix(c1.rgb, c2.rgb, clamp(c2.a * 1.4, 0.0, 1.0));
-        float clouds = clamp(c1.a * 0.7 + c2.a, 0.0, 1.0) * fade;
-        col = mix(col, cloudCol, clouds * 0.95);
+
+        /**
+         * Composición correcta de las dos capas: la cercana sobre la lejana,
+         * ponderando por alfa. Mezclando los colores a secas, los téxeles
+         * transparentes —que en un lienzo valen negro— arrastraban el cielo a
+         * un gris plano; era el velo sucio que cubría la parte alta del cuadro.
+         */
+        float aFar = c1.a * 0.7;
+        float aNear = c2.a;
+        float aTot = aNear + aFar * (1.0 - aNear);
+        vec3 cloudCol = aTot > 0.001
+          ? (c2.rgb * aNear + c1.rgb * aFar * (1.0 - aNear)) / aTot
+          : vec3(1.0);
+        col = mix(col, cloudCol, clamp(aTot, 0.0, 1.0) * fade * 0.95);
 
         // Banda de calima sobre el horizonte: la lámina pálida que en todos
         // los fotogramas separa el cielo del suelo y aleja el fondo. Tiene que
         // ser fina —dos o tres grados— porque la cámara mira casi horizontal
         // y una banda ancha se come todo el cielo visible.
         float haze = 1.0 - smoothstep(0.5, 0.523, vHeight01);
-        col = mix(col, mix(uBottom, vec3(1.0), 0.6), haze * 0.9);
+        col = mix(col, mix(uBottom, vec3(1.0), 0.45), haze * 0.9);
 
         gl_FragColor = vec4(col, 1.0);
       }
