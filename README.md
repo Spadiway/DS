@@ -12,7 +12,14 @@ npm install
 npm run dev      # servidor de desarrollo
 npm run build    # compilación de producción en dist/
 npm run preview  # servir la compilación
+
+npm run build:single   # dist-single/benito-escape.html: el juego entero
+                       # en un solo fichero, sin servidor ni recursos aparte
 ```
+
+`build:single` deja un HTML autocontenido de unos 950 kB que se abre haciendo
+doble clic y no pide nada a la red: las texturas, los modelos, las voces y la
+música se generan en el arranque.
 
 ---
 
@@ -222,45 +229,95 @@ segundo en vez de en cada fotograma, para no re-renderizar React a 60 Hz.
 
 ### Aspecto visual
 
-- **Sombreado cel** sobre `MeshToonMaterial` con mapa de degradado: bandas duras
-  y suelo de sombra alto, para que la cara oscura siga leyéndose.
-- **Sombras** proyectadas del sol, con el mapa ceñido a un radio alrededor del
-  jugador para que salgan nítidas, más un disco de contacto bajo cada criatura
-  que la asienta en el suelo aunque esté fuera de ese radio.
-- **Terreno aterrazado**: el ruido se cuantiza en mesetas separadas por riscos,
-  lo que da una arquitectura legible en vez de una duna uniforme. El color va en
-  los vértices y mezcla hierba, tierra, roca, orilla y nieve según pendiente,
-  altura y tres escalas de ruido.
-- **Camino de tierra** tallado en el terreno: una ruta sinuosa que atraviesa la
-  zona jugable, allanada para ser transitable y pintada como tierra batida. Es
-  lo que hace que el escenario parezca construido y no generado.
-- **Personajes articulados**: torso torneado con perfil de pera (hombros
-  estrechos, barriga ancha, cadera recogida), cuello, brazos con codo y zarpa,
-  piernas con rodilla y pies grandes, cola segmentada. La animación dobla codos
-  y rodillas, así que el paso se lee como paso y no como péndulo.
-- **Decorado** con color por rol horneado en los vértices: tronco, hoja, piedra,
-  acento y brillo, todo en una malla instanciada por tipo, con textura de grano
-  encima. Los objetos que se interponen entre la cámara y Benito se disuelven
-  con un patrón de ruido.
+La dirección de arte no se decidió a ojo. Se midieron fotograma a fotograma
+capturas del juego que sirve de referencia y se compararon con capturas
+propias, superficie por superficie:
+
+| superficie | referencia | luminancia | saturación |
+| --- | --- | --- | --- |
+| arena | `#fce489` | 226 | 0.45 |
+| camino de tierra | `#b96b17` | 117 | 0.87 |
+| madera | `#915523` | 94 | 0.76 |
+| ladrillo | `#a27750` | 125 | 0.50 |
+| mar cercano | `#61d8f8` | 193 | 0.61 |
+| colina lejana | `#9e8470` | 136 | 0.29 |
+
+Sobre el cuadro completo la referencia da una dominante cálida de +53 a +78 en
+la diferencia R-B, con dos tercios de los píxeles saturados en el sector
+naranja y una luminancia mediana entre 117 y 207. Las capturas de aquí daban
++2 a +8 —neutro—, casi la mitad de los píxeles en verde y una mediana de 84.
+No era falta de detalle: era falta de temperatura, de saturación y de luz.
+
+De ahí salen las decisiones de abajo, junto con cómo se iluminaban los juegos
+de esa generación de portátiles: sin sombras dinámicas, con la luz horneada en
+las texturas y en los colores de vértice.
+
+- **Gradación de paleta en un solo punto**: las veinte paletas pasan por una
+  función que arrastra los tonos hacia el naranja de referencia ponderando por
+  cercanía —un verde se vuelve oliva dorado, un cian de agua apenas se mueve—,
+  sube saturación y valor, y deja la niebla con el tono del horizonte en vez de
+  irse al gris.
+- **Sin mapeo de tonos.** ACES es una curva de cine: comprime los altos y
+  arrastra los colores vivos hacia el blanco. Aquel hardware sacaba el color
+  lineal y lo recortaba por canal, que es justamente por lo que aquellos juegos
+  se ven tan encendidos. Un verde quemado seguía siendo verde.
+- **Rampa de cel shading plana y alta** (0.70–1.00): la cara en sombra se lee
+  casi como la iluminada, igual que con iluminación horneada.
+- **Luz hemisférica como fuente principal** —cielo arriba, rebote cálido del
+  suelo abajo— con el sol aportando poco más que dirección y matiz, y la sombra
+  proyectada casi anulada. El presupuesto se recorta según el albedo dominante
+  del mundo: el reparto que deja bonito un prado revienta un mundo de hielo.
+- **Oclusión horneada en los vértices del terreno**: cada punto se compara con
+  la media de su entorno a tres radios; las crestas reciben cielo y las
+  vaguadas se resguardan. Cuesta una pasada en la generación y nada en juego.
+- **Degradado horneado por pieza en el decorado**: claro y frío arriba, oscuro
+  y cálido abajo. Sin él las copas se veían como recortes de cartulina.
+- **Lustre especular recortado en dos escalones**, inyectado a mano porque
+  `MeshToonMaterial` no lo trae: leve en el pelaje, alto en cascos, cristal,
+  hielo, metal y agua. Es el acabado brillante que define la estética de la
+  época; todo mate se leía como cartón pintado.
+- **Cielo** con cúmulos grandes de panza azulada pegados al horizonte —que es
+  donde mira una cámara casi horizontal—, cenit saturado y una banda fina de
+  calima sobre la línea del suelo.
+- **Encuadre bajo**: el horizonte cae al 35 % de la pantalla y la cámara pica
+  apenas 12°, con 52° de campo de visión. Iba a 21° y con el horizonte al 14 %,
+  de modo que dos tercios de la pantalla eran suelo vacío. Ese encuadre, más
+  que ninguna textura, es lo que hacía que los mundos parecieran desiertos.
+- **Terreno aterrazado**: el ruido se cuantiza en mesetas separadas por riscos.
+  El color va en los vértices y mezcla hierba, tierra, roca, orilla y nieve
+  según pendiente, altura y tres escalas de ruido.
+- **Camino de tierra** de once metros tallado en el terreno y llevado casi del
+  todo al naranja medido. En la referencia la senda ocupa entre un cuarto y un
+  tercio de la pantalla, y es lo que hace que el reparto de tonos del cuadro
+  sea naranja y no verde.
+- **Decorado repartido por cercanía al camino**, con orillas tupidas de matas y
+  el corredor de paso limpio. La densidad uniforme sobre una isla de 190 metros
+  dejaba una mata cada noventa metros cuadrados.
+- **Máscaras de entablado y de chapa remachada** —centradas en blanco, porque
+  el color va en los vértices— para vallas, casetas, barriles, arcos y
+  tuberías. Eran cajas de color liso, y es el dibujo de las juntas lo que da
+  escala y oficio a una construcción.
+- **Personajes articulados**: torso torneado con perfil de pera, cuello, brazos
+  con codo y zarpa, piernas con rodilla y pies grandes, cola segmentada. La
+  animación dobla codos y rodillas, así que el paso se lee como paso.
 - **Caras pintadas**: la cabeza es una esfera y el rostro va en la textura,
-  alineado con el frente del modelo. Cambiar de personaje es cambiar de dibujo:
-  el ceño de Silva, las gafas del Profesor y la lengua fuera de Deedee son
-  parámetros de la misma función.
-- **Mobiliario construido** colocado con criterio, no al azar: vallas que
-  bordean el camino con huecos para salirse, farolas a intervalos, escaleras de
-  troncos donde la cuesta aprieta, casetas orientadas hacia la ruta.
-- **Envolvente de interior**: los niveles bajo techo se cierran con un anillo de
-  muros de azulejo, pilastras y techo.
-- **La cámara esquiva los props altos**: se acerca cuando un árbol o una columna
-  se interpone, en lugar de disolverlo con un tramado.
-- **La partida abre mirando al camino**, no contra un talud.
-- **Bloom** sobre lo emisivo (cascos en alerta, cristales, neones, portales) y
-  tonemapping ACES para que los colores saturados no se quemen.
+  alineado con el frente del modelo. El ceño de Silva, las gafas del Profesor y
+  la lengua fuera de Deedee son parámetros de la misma función.
+- **Mochila de artefactos** en la espalda de Benito. El jugador le ve la
+  espalda casi toda la partida y por detrás no había un solo acento de color.
+- **Envolvente de interior**: los niveles bajo techo se cierran con muros de
+  azulejo, pilastras y techo.
+- **La cámara esquiva los estorbos altos** —árboles, columnas, peñascos, muros
+  de artefacto— y se eleva sobre el terreno en vez de acercarse, que es lo que
+  planta la cámara en el cogote del personaje.
+- **Bloom** sobre lo emisivo, con la emisión limitada por máscara de vértice a
+  las piezas que de verdad brillan y atemperada según lo claro que sea su
+  color: sin eso, una farola blanca se convertía en un chorro de luz.
 
 ### Rendimiento
 
-Medido sobre los 20 niveles: 145 000–235 000 triángulos por escena y generación
-completa de un nivel entre 25 y 70 ms (objetivo de carga: menos de 3 s). El
+Medido sobre los 20 niveles: 165 000–287 000 triángulos por escena y generación
+completa de un nivel entre 49 y 143 ms (objetivo de carga: menos de 3 s). El
 decorado se dibuja con `InstancedMesh` —un solo draw call por tipo de objeto— y
 las partículas comparten un único lote reciclado. La calidad baja desactiva
 sombras, bloom y contornos.
