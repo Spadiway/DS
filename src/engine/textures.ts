@@ -203,6 +203,120 @@ export function propGrainTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Máscara de entablado para el decorado construido.
+ *
+ * Vallas, casetas, barriles y arcos eran cajas de color liso: en la
+ * referencia una empalizada tiene tablas marcadas, juntas oscuras y un canto
+ * claro arriba de cada tabla, y ese dibujo es lo que da escala y oficio a una
+ * construcción. Como el decorado lleva el color en los vértices, la máscara
+ * va centrada en blanco: aporta el despiece sin imponer ningún color, así una
+ * misma imagen sirve para madera clara, madera quemada o metal.
+ */
+export function plankMaskTexture(): THREE.CanvasTexture {
+  const key = 'plankMask';
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const size = 128;
+  const { c, ctx } = canvas(size);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+
+  const boards = 6;
+  const bh = size / boards;
+  for (let i = 0; i < boards; i++) {
+    const y = i * bh;
+    // Cada tabla tiene su propio tono: una empalizada nunca es uniforme
+    const v = 226 + Math.floor(Math.random() * 28);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(0, y + 1, size, bh - 2);
+    // Junta oscura entre tablas y canto claro en el borde superior
+    ctx.fillStyle = 'rgba(80,80,80,0.75)';
+    ctx.fillRect(0, y, size, 1.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(0, y + 2, size, 1);
+    // Vetas longitudinales
+    for (let k = 0; k < 7; k++) {
+      const gy = y + 3 + Math.random() * (bh - 6);
+      ctx.strokeStyle = `rgba(140,140,140,${0.12 + Math.random() * 0.16})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      for (let x = 0; x <= size; x += 16) ctx.lineTo(x, gy + Math.sin(x * 0.12 + k) * 0.9);
+      ctx.stroke();
+    }
+    // Clavos en los extremos
+    for (const nx of [5, size - 5]) {
+      ctx.fillStyle = 'rgba(96,96,96,0.6)';
+      ctx.beginPath();
+      ctx.arc(nx, y + bh * 0.5, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const img = ctx.getImageData(0, 0, size, size);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 14;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = finish(c, { repeat: 1, linear: true });
+  cache.set(key, tex);
+  return tex;
+}
+
+/**
+ * Máscara de chapa remachada, para el decorado industrial y alienígena. Mismo
+ * criterio que el entablado: blanco de base, solo dibujo.
+ */
+export function panelMaskTexture(): THREE.CanvasTexture {
+  const key = 'panelMask';
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const size = 128;
+  const { c, ctx } = canvas(size);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+
+  // Retícula de chapas con bisel
+  const cell = size / 4;
+  for (let gy = 0; gy < 4; gy++) {
+    for (let gx = 0; gx < 4; gx++) {
+      const v = 228 + Math.floor(Math.random() * 26);
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(gx * cell + 2, gy * cell + 2, cell - 4, cell - 4);
+      // Bisel: claro arriba e izquierda, oscuro abajo y derecha
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(gx * cell + 2, gy * cell + 2, cell - 4, 1.5);
+      ctx.fillStyle = 'rgba(70,70,70,0.55)';
+      ctx.fillRect(gx * cell + 2, (gy + 1) * cell - 3, cell - 4, 1.5);
+      ctx.fillStyle = 'rgba(90,90,90,0.7)';
+      ctx.fillRect(gx * cell, gy * cell, 2, cell);
+      // Remaches en las esquinas
+      for (const [rx, ry] of [
+        [6, 6],
+        [cell - 6, 6],
+        [6, cell - 6],
+        [cell - 6, cell - 6],
+      ]) {
+        ctx.fillStyle = 'rgba(110,110,110,0.55)';
+        ctx.beginPath();
+        ctx.arc(gx * cell + rx, gy * cell + ry, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const tex = finish(c, { repeat: 1, linear: true });
+  cache.set(key, tex);
+  return tex;
+}
+
 /** Corteza: anillos y vetas verticales. */
 export function barkTexture(base: number): THREE.CanvasTexture {
   const key = `bark${base}`;

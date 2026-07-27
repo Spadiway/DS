@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createCelMaterialInstanced } from './celMaterial';
-import { propGrainTexture } from './textures';
+import { panelMaskTexture, plankMaskTexture, propGrainTexture } from './textures';
 import type { PropKind } from '../content/worlds';
 import { type Rng, rngRange } from './mathx';
 
@@ -71,33 +71,44 @@ const BUILDERS: Record<PropKind, () => Piece[]> = {
    * estrechos, de modo que la silueta se curva y se lee como una hoja de palma
    * aunque sigan siendo conos.
    */
+  /**
+   * Palmera.
+   *
+   * Medida la geometría, la anterior salía tan ancha como alta (2.28 × 2.29):
+   * un tronco corto rematado por ocho conos aplastados de más de un metro que
+   * se abrían en horizontal a la altura de la cámara, de modo que al pasar
+   * cerca la pantalla se llenaba de rombos verdes planos. Una palmera es un
+   * fuste largo con una corona compacta: el tronco pasa a cuatro metros y las
+   * frondas se acortan, se estrechan y se encadenan en tres tramos que caen
+   * describiendo un arco.
+   */
   palm: () => [
-    p(CYL_TAPER, 'trunk', [0, 1.25, 0], [0.15, 1.25, 0.15], [0.1, 0, 0.08]),
+    p(CYL_TAPER, 'trunk', [0.16, 2.0, 0], [0.15, 2.0, 0.15], [0.05, 0, 0.09]),
     // Anillos del tronco
-    ...Array.from({ length: 4 }, (_, i) =>
-      p(CYL, 'trunk', [i * 0.05, 0.42 + i * 0.5, 0], [0.18 - i * 0.013, 0.05, 0.18 - i * 0.013]),
+    ...Array.from({ length: 6 }, (_, i) =>
+      p(CYL, 'trunk', [i * 0.045, 0.5 + i * 0.58, 0], [0.175 - i * 0.012, 0.05, 0.175 - i * 0.012]),
     ),
-    ...Array.from({ length: 8 }, (_, i) => {
-      const a = (i / 8) * Math.PI * 2;
+    ...Array.from({ length: 7 }, (_, i) => {
+      const a = (i / 7) * Math.PI * 2;
       const dark = i % 2 === 1;
       const cx = Math.cos(a);
       const cz = Math.sin(a);
-      // Tres tramos: nacen del cogollo y caen describiendo un arco
       return [0, 1, 2].map((k) => {
-        const reach = 0.34 + k * 0.36;
-        const droop = 0.18 + k * 0.5;
+        // Cada tramo arranca donde acaba el anterior y cae un poco más
+        const reach = 0.22 + k * 0.3;
+        const drop = k * k * 0.17;
         return p(
           C5,
           dark ? 'foliageDark' : 'foliage',
-          [cx * reach + 0.22, 2.5 - (dark ? 0.08 : 0) - droop * 0.42, cz * reach],
-          [0.15 - k * 0.032, 0.42 - k * 0.07, 0.07 - k * 0.012],
-          [Math.PI / 2 - 0.42 + droop, -a, 0],
+          [cx * reach + 0.3, 4.02 - (dark ? 0.07 : 0) - drop, cz * reach],
+          [0.1 - k * 0.022, 0.34 - k * 0.05, 0.05 - k * 0.008],
+          [Math.PI / 2 - 0.55 + k * 0.42, -a, 0],
         );
       });
     }).flat(),
-    p(S, 'foliageDark', [0.22, 2.5, 0], [0.22, 0.18, 0.22]),
-    p(S, 'accent', [0.34, 2.34, 0.1], [0.11, 0.11, 0.11]),
-    p(S, 'accent', [0.14, 2.32, -0.12], [0.09, 0.09, 0.09]),
+    p(S, 'foliageDark', [0.3, 4.02, 0], [0.2, 0.17, 0.2]),
+    p(S, 'accent', [0.42, 3.86, 0.1], [0.1, 0.1, 0.1]),
+    p(S, 'accent', [0.22, 3.84, -0.12], [0.085, 0.085, 0.085]),
   ],
 
   /**
@@ -476,6 +487,12 @@ function buildGeometry(pieces: Piece[], colors: RoleColors): THREE.BufferGeometr
   return merged;
 }
 
+/** Construcciones de madera: reciben la máscara de entablado. */
+const PLANKED = new Set<PropKind>(['fence', 'hut', 'signpost', 'barrel', 'logStair']);
+
+/** Construcciones de chapa o piedra labrada: máscara de paneles remachados. */
+const PANELLED = new Set<PropKind>(['archway', 'pipe', 'monolith', 'pillar', 'neonSign', 'lampPost']);
+
 /** Props de superficie pulida: cristal, hielo, metal, cerámica, neón. */
 const SHINY_PROPS = new Set<PropKind>([
   'crystal',
@@ -511,9 +528,15 @@ export function createPropMesh(
    * siluetas oscuras. Esta máscara está centrada en blanco: añade textura
    * sin robar luz.
    */
-  const detail = propGrainTexture().clone();
+  /**
+   * El decorado construido lleva despiece; lo natural, solo grano. Una valla
+   * o una caseta sin tablas marcadas se lee como una caja de color liso, y es
+   * el dibujo de las juntas lo que le da escala y oficio.
+   */
+  const detail = (PLANKED.has(kind) ? plankMaskTexture() : PANELLED.has(kind) ? panelMaskTexture() : propGrainTexture()).clone();
   detail.wrapS = detail.wrapT = THREE.RepeatWrapping;
-  detail.repeat.set(2.5, 2.5);
+  const rep = PLANKED.has(kind) || PANELLED.has(kind) ? 1 : 2.5;
+  detail.repeat.set(rep, rep);
   detail.needsUpdate = true;
 
   /**

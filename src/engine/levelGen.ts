@@ -766,7 +766,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
     const glowKind = propSpec.kind === 'crystal' || propSpec.kind === 'neonSign' || propSpec.kind === 'lantern';
     const im = createPropMesh(propSpec.kind, instances, roleColorsFor(spec), {
       emissive: glowKind ? 0.32 : propSpec.kind === 'mushroom' || propSpec.kind === 'coral' ? 0.16 : 0,
-      fadeNear: isGrass ? 1.8 : 1.3,
+      fadeNear: isGrass ? 1.4 : 0.9,
       castShadow: q.shadows && !isGrass,
     });
     group.add(im);
@@ -969,7 +969,7 @@ export function generateLevel(spec: LevelSpec): GeneratedLevel {
       if (list.length === 0) continue;
       const im = createPropMesh(kind as never, list, roles, {
         emissive,
-        fadeNear: 1.3,
+        fadeNear: 0.9,
         castShadow: q.shadows,
       });
       group.add(im);
